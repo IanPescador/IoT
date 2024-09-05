@@ -1,44 +1,42 @@
-#Prueba comuicacion UDP
-
 import socket
 from time import sleep
 
 HOST = 'localhost'
-#IP = "192.168.0.194"
-#PORT = 52545
+IP = "192.168.4.88"
+PORT = 3333
 
-IP = "148.231.130.229" 
-PORT = 22
-MESSAGE = "HELLO"
+#IP = "iot-uabc.site"
+#PORT = 2877
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.settimeout(5)
+# Pedir al usuario que ingrese el mensaje
+while True:
+    MESSAGE = input("Por favor, ingresa el mensaje que deseas enviar: ")
 
-print(f"Mandando Informacion")
-print(f"{MESSAGE} to {IP}:{PORT}")
-sock.sendto(MESSAGE.encode(), (IP, PORT))
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(10)
 
-try:
-    print(f"Escuchando de {IP}:{PORT}")
-    #data = sock.recvfrom(1024)
-    data = sock.recv(1024)
-    print(f"received message: {data}")
-except socket.error:
-    print("No respondio")
+    print(f"Mandando Información")
+    print(f"{MESSAGE} to {IP}:{PORT}")
+    sock.sendto(MESSAGE.encode(), (IP, PORT))
 
+    try:
+        print(f"Escuchando de {IP}:{PORT}")
+        data = sock.recv(1024)
+        print(f"Mensaje recibido: {data.decode()}")
+    except socket.error:
+        print("No respondió")
 
-#while(True):
-    #print(f"Mandando Informacion")
-    #print(f"{MESSAGE} to {IP}:{PORT}")
-    #sock.sendto(MESSAGE.encode(), (IP, PORT))
+# Si deseas enviar mensajes continuamente y recibir respuestas, puedes descomentar el siguiente bloque
+# while True:
+#     print(f"Mandando Información")
+#     print(f"{MESSAGE} to {IP}:{PORT}")
+#     sock.sendto(MESSAGE.encode(), (IP, PORT))
 
-    #try:
-        #print(f"Escuchando de {IP}:{PORT}")
-        #data = sock.recvfrom(1024)
-        #print(f"received message: {data}")
-    #except socket.error:
-        #print("No respondio")
+#     try:
+#         print(f"Escuchando de {IP}:{PORT}")
+#         data = sock.recv(1024)
+#         print(f"Mensaje recibido: {data.decode()}")
+#     except socket.error:
+#         print("No respondió")
 
-    #sleep(2)
-
-
+#     sleep(2)

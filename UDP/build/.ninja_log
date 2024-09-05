@@ -1008,3 +1008,5 @@
 83	225	7465984592980115	C:/Users/ianpe/OneDrive/Documentos/GitHub/IoT/UDP/build/bootloader/bootloader.elf	46275529f68f66e2
 83	225	7465984592980115	C:/Users/ianpe/OneDrive/Documentos/GitHub/IoT/UDP/build/bootloader/bootloader.bin	46275529f68f66e2
 83	225	7465984592980115	C:/Users/ianpe/OneDrive/Documentos/GitHub/IoT/UDP/build/bootloader/bootloader.map	46275529f68f66e2
+29	1623097	0	CMakeFiles/confserver	6f0fbbd9b8add87c
+29	1623097	0	C:/Users/ianpe/OneDrive/Documentos/GitHub/IoT/UDP/build/CMakeFiles/confserver	6f0fbbd9b8add87c
