@@ -4,11 +4,12 @@ import socket
 from time import sleep
 
 HOST = 'localhost'
-#IP = "192.168.0.198"
-#PORT = 3333
+IP = "192.168.4.88"
+#IP = "192.168.4.1"
+PORT = 3333
 
-IP = "iot-uabc.site"
-PORT = 2807
+#IP = "iot-uabc.site"
+#PORT = 2807
 
 # Pedir al usuario que ingrese el mensaje
 while True:
