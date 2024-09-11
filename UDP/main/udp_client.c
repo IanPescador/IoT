@@ -1,129 +1,102 @@
-/* BSD Socket API Example
-
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
+#include <stdio.h>
 #include <string.h>
-#include <sys/param.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/event_groups.h"
-#include "esp_system.h"
-#include "esp_event.h"
-#include "esp_log.h"
-#include "nvs_flash.h"
-#include "esp_netif.h"
+#include <stdlib.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <esp_log.h>
+#include <nvs_flash.h>
+#include <esp_netif.h>
+#include <esp_event.h>
+#include <esp_system.h>
+#include <esp_wifi.h>
 #include "protocol_examples_common.h"
 
-#include "lwip/err.h"
-#include "lwip/sockets.h"
-#include "lwip/sys.h"
-#include <lwip/netdb.h>
+#define TAG "UDP_SENDER"
+#define LOCAL_PORT 3333
+#define REMOTE_IP "82.180.173.228"
+#define REMOTE_PORT 2877
+#define BUFFER_SIZE 128
 
-#ifdef CONFIG_EXAMPLE_SOCKET_IP_INPUT_STDIN
-#include "addr_from_stdin.h"
-#endif
-
-#define CONFIG_EXAMPLE_IPV4
-
-#if defined(CONFIG_EXAMPLE_IPV4)
-#define HOST_IP_ADDR CONFIG_EXAMPLE_IPV4_ADDR
-#elif defined(CONFIG_EXAMPLE_IPV6)
-#define HOST_IP_ADDR CONFIG_EXAMPLE_IPV6_ADDR
-#else
-#define HOST_IP_ADDR ""
-#endif
-
-#define PORT CONFIG_EXAMPLE_PORT
-
-static const char *TAG = "example";
-static const char *payload = "Message from ESP32 ";
-
-
-static void udp_client_task(void *pvParameters)
+static void udp_server_task(void *pvParameters)
 {
-    char rx_buffer[128];
-    char host_ip[] = HOST_IP_ADDR;
-    int addr_family = 0;
-    int ip_protocol = 0;
+    char rx_buffer[BUFFER_SIZE];
+    char response_buffer[BUFFER_SIZE];
+    struct sockaddr_in local_addr, remote_addr, client_addr;
+    socklen_t client_addr_len = sizeof(client_addr);
+    int sock, len;
+    int addr_family = AF_INET;
+    int ip_protocol = IPPROTO_UDP;
+
+    // Create a UDP socket
+    sock = socket(addr_family, SOCK_DGRAM, ip_protocol);
+    if (sock < 0) {
+        ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
+        vTaskDelete(NULL);
+    }
+    ESP_LOGI(TAG, "Socket created");
+
+    // Set timeout
+    struct timeval timeout;
+    timeout.tv_sec = 10;
+    timeout.tv_usec = 0;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
+
+    // Bind to local port
+    local_addr.sin_family = addr_family;
+    local_addr.sin_port = htons(LOCAL_PORT);
+    local_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (bind(sock, (struct sockaddr *)&local_addr, sizeof(local_addr)) < 0) {
+        ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
+        close(sock);
+        vTaskDelete(NULL);
+    }
+    ESP_LOGI(TAG, "Socket bound to port %d", LOCAL_PORT);
+
+    // Initialize remote address
+    remote_addr.sin_family = addr_family;
+    remote_addr.sin_port = htons(REMOTE_PORT);
+    inet_pton(addr_family, REMOTE_IP, &remote_addr.sin_addr);
 
     while (1) {
-
-#if defined(CONFIG_EXAMPLE_IPV4)
-        struct sockaddr_in dest_addr;
-        dest_addr.sin_addr.s_addr = inet_addr(HOST_IP_ADDR);
-        dest_addr.sin_family = AF_INET;
-        dest_addr.sin_port = htons(PORT);
-        addr_family = AF_INET;
-        ip_protocol = IPPROTO_IP;
-#elif defined(CONFIG_EXAMPLE_IPV6)
-        struct sockaddr_in6 dest_addr = { 0 };
-        inet6_aton(HOST_IP_ADDR, &dest_addr.sin6_addr);
-        dest_addr.sin6_family = AF_INET6;
-        dest_addr.sin6_port = htons(PORT);
-        dest_addr.sin6_scope_id = esp_netif_get_netif_impl_index(EXAMPLE_INTERFACE);
-        addr_family = AF_INET6;
-        ip_protocol = IPPROTO_IPV6;
-#elif defined(CONFIG_EXAMPLE_SOCKET_IP_INPUT_STDIN)
-        struct sockaddr_storage dest_addr = { 0 };
-        ESP_ERROR_CHECK(get_addr_from_stdin(PORT, SOCK_DGRAM, &ip_protocol, &addr_family, &dest_addr));
-#endif
-
-        int sock = socket(addr_family, SOCK_DGRAM, ip_protocol);
-        if (sock < 0) {
-            ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
-            break;
+        ESP_LOGI(TAG, "Waiting for data");
+        len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0, (struct sockaddr *)&client_addr, &client_addr_len);
+        if (len < 0) {
+            ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
+            continue;
         }
 
-        // Set timeout
-        struct timeval timeout;
-        timeout.tv_sec = 10;
-        timeout.tv_usec = 0;
-        setsockopt (sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
+        rx_buffer[len] = 0; // Null-terminate the received data
+        ESP_LOGI(TAG, "Received %d bytes from client", len);
+        ESP_LOGI(TAG, "Data: %s", rx_buffer);
 
-        ESP_LOGI(TAG, "Socket created, sending to %s:%d", HOST_IP_ADDR, PORT);
-
-        while (1) {
-
-            int err = sendto(sock, payload, strlen(payload), 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-            if (err < 0) {
-                ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-                break;
-            }
-            ESP_LOGI(TAG, "Message sent");
-
-            struct sockaddr_storage source_addr; // Large enough for both IPv4 or IPv6
-            socklen_t socklen = sizeof(source_addr);
-            int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0, (struct sockaddr *)&source_addr, &socklen);
-
-            // Error occurred during receiving
-            if (len < 0) {
-                ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
-                break;
-            }
-            // Data received
-            else {
-                rx_buffer[len] = 0; // Null-terminate whatever we received and treat like a string
-                ESP_LOGI(TAG, "Received %d bytes from %s:", len, host_ip);
-                ESP_LOGI(TAG, "%s", rx_buffer);
-                if (strncmp(rx_buffer, "OK: ", 4) == 0) {
-                    ESP_LOGI(TAG, "Received expected message, reconnecting");
-                    break;
-                }
-            }
-
-            vTaskDelay(2000 / portTICK_PERIOD_MS);
+        // Send data to remote server
+        int sent_len = sendto(sock, rx_buffer, len, 0, (struct sockaddr *)&remote_addr, sizeof(remote_addr));
+        if (sent_len < 0) {
+            ESP_LOGE(TAG, "sendto failed: errno %d", errno);
+            continue;
         }
 
-        if (sock != -1) {
-            ESP_LOGE(TAG, "Shutting down socket and restarting...");
-            shutdown(sock, 0);
-            close(sock);
+        // Receive response from remote server
+        ESP_LOGI(TAG, "Waiting response for server");
+        len = recvfrom(sock, response_buffer, sizeof(response_buffer) - 1, 0, NULL, NULL);
+        if (len < 0) {
+            ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
+            continue;
+        }
+        response_buffer[len] = 0; // Null-terminate the response data
+        ESP_LOGI(TAG, "Received %d bytes from remote server", len);
+        ESP_LOGI(TAG, "Response: %s", response_buffer);
+
+        // Send response back to client
+        sent_len = sendto(sock, response_buffer, len, 0, (struct sockaddr *)&client_addr, client_addr_len);
+        if (sent_len < 0) {
+            ESP_LOGE(TAG, "sendto failed: errno %d", errno);
+            continue;
         }
     }
+
+    close(sock);
     vTaskDelete(NULL);
 }
 
@@ -133,11 +106,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
-     * Read "Establishing Wi-Fi or Ethernet Connection" section in
-     * examples/protocols/README.md for more information about this function.
-     */
     ESP_ERROR_CHECK(example_connect());
 
-    xTaskCreate(udp_client_task, "udp_client", 4096, NULL, 5, NULL);
+    xTaskCreate(udp_server_task, "udp_server", 4096, NULL, 5, NULL);
 }
