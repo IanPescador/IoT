@@ -4,8 +4,8 @@ import socket
 from time import sleep
 
 HOST = 'localhost'
-IP = "192.168.4.88"
-#IP = "192.168.4.1"
+#IP = "192.168.4.88"
+IP = "192.168.4.1"
 PORT = 3333
 
 #IP = "iot-uabc.site"
