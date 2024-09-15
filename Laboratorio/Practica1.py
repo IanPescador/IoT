@@ -9,7 +9,8 @@ IP = "192.168.4.1"
 PORT = 3333
 
 #IP = "iot-uabc.site"
-#PORT = 2807
+#PORT = 2807 #UDP
+#PORT = 2877 #Command
 
 # Pedir al usuario que ingrese el mensaje
 while True:

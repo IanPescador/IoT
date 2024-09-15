@@ -249,13 +249,11 @@ static void udp_server_task(void *pvParameters)
                                 token = strtok(NULL, ":"); //Value
                                 if(token != NULL){
                                     if (!strcmp(token, "1")){ //Turn on LED
-                                        led_state = true;
-                                        gpio_set_level(LED1, led_state);
-                                        snprintf(message, sizeof(message), "ACK:%d", led_state);
+                                        gpio_set_level(LED1, 1);
+                                        snprintf(message, sizeof(message), "ACK:%d", gpio_get_level(LED1));
                                     }else if (!strcmp(token, "0")){ //Turn off LED
-                                        led_state = false;
-                                        gpio_set_level(LED1, led_state);
-                                        snprintf(message, sizeof(message), "ACK:%d", led_state);
+                                        gpio_set_level(LED1, 0);
+                                        snprintf(message, sizeof(message), "ACK:%d", gpio_get_level(LED1));
                                     }  
                                 }   
                             } 
@@ -263,7 +261,7 @@ static void udp_server_task(void *pvParameters)
                             token = strtok(NULL, ":"); //Element
                             if (token != NULL){
                                 if (!strcmp(token, "L")){ //Element is LED
-                                    snprintf(message, sizeof(message), "ACK:%d", led_state);
+                                    snprintf(message, sizeof(message), "ACK:%d", gpio_get_level(LED1));
                                 }else if (!strcmp(token, "A")){ //Element is ADC
                                     snprintf(message, sizeof(message), "ACK:%d", ADC1_Ch0_Read_mV());
                                 }

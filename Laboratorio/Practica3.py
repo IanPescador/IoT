@@ -6,7 +6,7 @@ import socket
 #PORT = 3333
 
 HOST = "iot-uabc.site"
-PORT = 8080
+PORT = 8266 #TCP_SERVER
 
 def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
