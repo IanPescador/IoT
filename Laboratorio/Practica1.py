@@ -6,7 +6,7 @@ from time import sleep
 HOST = 'localhost'
 #IP = "192.168.4.88"
 IP = "192.168.4.1"
-PORT = 3333
+PORT = 8266
 
 #IP = "iot-uabc.site"
 #PORT = 2807 #UDP

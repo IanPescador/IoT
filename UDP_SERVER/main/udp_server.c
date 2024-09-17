@@ -180,7 +180,6 @@ static void udp_server_task(void *pvParameters)
     int ip_protocol = 0;
     struct sockaddr_in dest_addr;
     char *token;
-    bool led_state = false;
 
     if (addr_family != AF_INET) {
         ESP_LOGE(TAG, "Invalid address family, must be AF_INET");
