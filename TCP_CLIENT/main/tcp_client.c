@@ -328,20 +328,30 @@ static void tcp_client(void *pvParameters)
     dest_addr.sin_port = htons(PORT);
     ip_protocol = IPPROTO_IP;
 
-    int sock = socket(addr_family, SOCK_STREAM, ip_protocol);
-    if (sock < 0) {
-        ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso antes de reintentar
-    }
-    ESP_LOGI(TAG, "Socket created, connecting to %s:%d", HOST_IP_ADDR, PORT);
+    int sock;
+    int err;
 
-    int err = connect(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-    if (err != 0) {
-        ESP_LOGE(TAG, "Socket unable to connect: errno %d", errno);
-        close(sock);
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso antes de reintentar
+    // Intentar la conexión hasta que sea exitosa
+    while (1) {
+        // Crear el socket
+        sock = socket(addr_family, SOCK_STREAM, ip_protocol);
+        if (sock < 0) {
+            ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
+            vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso antes de reintentar
+            continue; // Reintentar creación de socket
+        }
+        ESP_LOGI(TAG, "Socket created, connecting to %s:%d", HOST_IP_ADDR, PORT);
+
+        err = connect(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+        if (err == 0) {
+            ESP_LOGI(TAG, "Successfully connected");
+            break; // Conexión exitosa, salir del bucle de reintento
+        } else {
+            ESP_LOGE(TAG, "Socket unable to connect: errno %d", errno);
+            close(sock);
+            vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso antes de reintentar
+        }
     }
-    ESP_LOGI(TAG, "Successfully connected");
 
     struct timeval timeout;
     timeout.tv_sec = 2;  // Tiempo en segundos
@@ -356,21 +366,7 @@ static void tcp_client(void *pvParameters)
     }
     ESP_LOGI(TAG, "Login message sent: %s", CONNECT);
 
-    //Recibir respuesta del servidor
-    ESP_LOGI(TAG, "Waiting for data");
-    int len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-    if (len < 0) {
-        if(errno != EWOULDBLOCK){
-            ESP_LOGE(TAG, "recv failed: errno %d", errno);
-        }else{
-            ESP_LOGI(TAG, "Timeout");
-        }
-    } else if (len == 0) {
-        ESP_LOGW(TAG, "Connection closed by server");
-    } else {
-        rx_buffer[len] = 0; // Null-terminate the received data
-        ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
-    }
+    delayMs(100);
 
     //Bucle de comunicacion
     while (1) {
@@ -392,111 +388,90 @@ static void tcp_client(void *pvParameters)
             ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
         }
 
-        if (_millis >= 10000 && len < 0)
+        if (strcmp(rx_buffer,"ACK")) //Verificar que es un comando
         {
-            // Enviar mensaje Keep-Alive cada 10 segundos
-            err = send(sock, KEEP_ALIVE, strlen(KEEP_ALIVE), 0);
-            if (err < 0) {
-                ESP_LOGE(TAG, "Error occurred during sending KEEP_ALIVE: errno %d", errno);
-                break;
-            }
-            ESP_LOGI(TAG, "Keep-Alive message sent: %s", KEEP_ALIVE);
-
-            //Recibir respuesta del servidor
-            ESP_LOGI(TAG, "Waiting for data");
-            int len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-            if (len < 0) {
-                if(errno != EWOULDBLOCK){
-                    ESP_LOGE(TAG, "recv failed: errno %d", errno);
+            if (_millis >= 10000 && len < 0) //Mandar keep alive si no hay mensaje.
+            {
+                // Enviar mensaje Keep-Alive cada 10 segundos
+                err = send(sock, KEEP_ALIVE, strlen(KEEP_ALIVE), 0);
+                if (err < 0) {
+                    ESP_LOGE(TAG, "Error occurred during sending KEEP_ALIVE: errno %d", errno);
                     break;
-                }else{
-                    ESP_LOGI(TAG, "Timeout");
                 }
-            } else if (len == 0) {
-                ESP_LOGW(TAG, "Connection closed by server");
-                break;
-            } else {
-                rx_buffer[len] = 0; // Null-terminate the received data
-                ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
-            }
+                ESP_LOGI(TAG, "Keep-Alive message sent: %s", KEEP_ALIVE);
+                _millis=0;
+            }else{
+                // Initialize message with NACK
+                strcpy(message, "NACK");
 
-            _millis=0;
-        }else{
-            // Initialize message with NACK
-            strcpy(message, "NACK");
-
-            //First token verify with command uabc
-            token = strtok(rx_buffer, ":");
-            if (token != NULL && !strcmp(token,"UABC")){
-                token = strtok(NULL, ":");
-                if (token != NULL && !strcmp(token,"IPR")){
-                    token = strtok(NULL, ":");//Verify operation read or write
-                    if (token != NULL){
-                        if (!strcmp(token, "W")){ //Only led
-                            token = strtok(NULL, ":"); //Element
-                            if (token != NULL && !strcmp(token, "L")){ //Element is LED
-                                token = strtok(NULL, ":"); //Value
-                                if(token != NULL){
-                                    if (!strcmp(token, "1")){ //Turn on LED
-                                        led_state = true;
-                                        gpio_set_level(LED1, led_state);
+                //First token verify with command uabc
+                token = strtok(rx_buffer, ":");
+                if (token != NULL && !strcmp(token,"UABC")){
+                    token = strtok(NULL, ":");
+                    if (token != NULL && !strcmp(token,"IPR")){
+                        token = strtok(NULL, ":");//Verify operation read or write
+                        if (token != NULL){
+                            if (!strcmp(token, "W")){ //Only led
+                                token = strtok(NULL, ":"); //Element
+                                if (token != NULL && !strcmp(token, "L")){ //Element is LED
+                                    token = strtok(NULL, ":"); //Value
+                                    if(token != NULL){
+                                        if (!strcmp(token, "1")){ //Turn on LED
+                                            led_state = true;
+                                            gpio_set_level(LED1, led_state);
+                                            snprintf(message, sizeof(message), "ACK:%d", led_state);
+                                        }else if (!strcmp(token, "0")){ //Turn off LED
+                                            led_state = false;
+                                            gpio_set_level(LED1, led_state);
+                                            snprintf(message, sizeof(message), "ACK:%d", led_state);
+                                        }  
+                                    }   
+                                } 
+                            }else if(!strcmp(token, "R")){ //Led and ADC 
+                                token = strtok(NULL, ":"); //Element
+                                if (token != NULL){
+                                    if (!strcmp(token, "L")){ //Element is LED
                                         snprintf(message, sizeof(message), "ACK:%d", led_state);
-                                    }else if (!strcmp(token, "0")){ //Turn off LED
-                                        led_state = false;
-                                        gpio_set_level(LED1, led_state);
-                                        snprintf(message, sizeof(message), "ACK:%d", led_state);
-                                    }  
-                                }   
-                            } 
-                        }else if(!strcmp(token, "R")){ //Led and ADC 
-                            token = strtok(NULL, ":"); //Element
-                            if (token != NULL){
-                                if (!strcmp(token, "L")){ //Element is LED
-                                    snprintf(message, sizeof(message), "ACK:%d", gpio_get_level(LED1));
-                                }else if (!strcmp(token, "A")){ //Element is ADC
-                                    snprintf(message, sizeof(message), "ACK:%d", ADC1_Ch0_Read_mV());
+                                    }else if (!strcmp(token, "A")){ //Element is ADC
+                                        snprintf(message, sizeof(message), "ACK:%d", ADC1_Ch0_Read_mV());
+                                    }
                                 }
-                            }
-                        }else if (!strcmp(token, "IP"))
-                        {
-                            // Respond with the ESP32's IP address
-                            esp_netif_ip_info_t ip_info;
-                            esp_netif_get_ip_info(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), &ip_info);
-                            snprintf(message, sizeof(message), "ACK:%s", ip4addr_ntoa(&ip_info.ip));
-                        }else if (!strcmp(token, "FACTORY")) //Reset Factory
-                        {
-                            ESP_ERROR_CHECK(nvs_flash_erase());
-                            ESP_ERROR_CHECK(nvs_flash_init());
+                            }else if (!strcmp(token, "FACTORY")) //Reset Factory
+                            {
+                                ESP_ERROR_CHECK(nvs_flash_erase());
+                                ESP_ERROR_CHECK(nvs_flash_init());
 
-                            ESP_LOGI(TAG, "NVS borrado exitosamente. Reiniciando el ESP32...");
-                            esp_restart();
+                                ESP_LOGI(TAG, "NVS borrado exitosamente. Reiniciando el ESP32...");
+                                esp_restart();
+                            } 
                         }
-                        
                     }
                 }
-            }
-            // Enviar Mensaje
-            if (!strcmp(message,"NACK"))
-            {
-                err = send(sock, message, strlen(message), 0);
-                if (err < 0) {
-                    ESP_LOGE(TAG, "Error occurred during sending message: errno %d", errno);
-                    break;
+                // Enviar Mensaje
+                if (strcmp(message,"NACK"))
+                {
+                    err = send(sock, message, strlen(message), 0);
+                    if (err < 0) {
+                        ESP_LOGE(TAG, "Error occurred during sending message: errno %d", errno);
+                        break;
+                    }
+                    ESP_LOGI(TAG, "message sent: %s", message);
                 }
-                ESP_LOGI(TAG, "message sent: %s", message);
             }
         }
     }
-
+    
     if (sock != -1) {
         ESP_LOGI(TAG, "Shutting down socket and reconnecting...");
         shutdown(sock, 0);
         close(sock);
     }
-
     vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso antes de reconectar
     
+    // Eliminar la tarea antes de retornar
+    vTaskDelete(NULL);
 }
+
 
 //Main proccess
 void app_main(void)
@@ -543,8 +518,6 @@ void app_main(void)
 
         //Init wifi sta
         wifi_connection_sta();
-
-        delayMs(5000);
 
         //CLIENT TCP
         xTaskCreate(tcp_client, "tcp_client", 4096, (void*)AF_INET, 5, NULL); 

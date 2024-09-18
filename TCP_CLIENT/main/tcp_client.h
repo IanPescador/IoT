@@ -28,7 +28,6 @@
 #include <lwip/netdb.h>
 
 bool config_complete = false;
-bool login_server = false;
 
 static const char *TAG = "TCP_CLIENT";
 static const char *KEEP_ALIVE = "UABC:IPR:K:S:KeepAlive"; //Enviar cada 10 seg
@@ -45,8 +44,7 @@ uint32_t _millis=0;
 
 #define WIFI_CHANNEL    1
 
-#define HOST_IP_ADDR "82.180.173.228" 
-//#define HOST_IP_ADDR "192.168.0.200"  
+#define HOST_IP_ADDR "82.180.173.228" //iot-uabc.site  
 #define PORT 8266                    
 
 bool led_state;
