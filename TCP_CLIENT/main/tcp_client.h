@@ -45,9 +45,11 @@ uint32_t _millis=0;
 
 #define WIFI_CHANNEL    1
 
-#define HOST_IP_ADDR "iot-uabc.site"  
+#define HOST_IP_ADDR "82.180.173.228" 
+//#define HOST_IP_ADDR "192.168.0.200"  
 #define PORT 8266                    
 
+bool led_state;
 #define LED1 GPIO_NUM_5
 
 void ADC1_Ch0_Init(void);

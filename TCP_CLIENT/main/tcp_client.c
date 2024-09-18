@@ -312,66 +312,78 @@ static void udp_server_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
+//TCP CLIENT
 static void tcp_client(void *pvParameters)
 {
     char rx_buffer[128];
     char message[128];
-    struct sockaddr_in dest_addr;
     int addr_family = AF_INET;
     int ip_protocol = IPPROTO_IP;
     char *token;
 
     // Configuración de la dirección del servidor
-    inet_pton(AF_INET, HOST_IP_ADDR, &dest_addr.sin_addr);
-    dest_addr.sin_family = addr_family;
+    struct sockaddr_in dest_addr;
+    dest_addr.sin_addr.s_addr = inet_addr(HOST_IP_ADDR);
+    dest_addr.sin_family = AF_INET;
     dest_addr.sin_port = htons(PORT);
+    ip_protocol = IPPROTO_IP;
 
+    int sock = socket(addr_family, SOCK_STREAM, ip_protocol);
+    if (sock < 0) {
+        ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso antes de reintentar
+    }
+    ESP_LOGI(TAG, "Socket created, connecting to %s:%d", HOST_IP_ADDR, PORT);
+
+    int err = connect(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    if (err != 0) {
+        ESP_LOGE(TAG, "Socket unable to connect: errno %d", errno);
+        close(sock);
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso antes de reintentar
+    }
+    ESP_LOGI(TAG, "Successfully connected");
+
+    struct timeval timeout;
+    timeout.tv_sec = 2;  // Tiempo en segundos
+    timeout.tv_usec = 0; // Tiempo en microsegundos
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+    // Enviar mensaje de login
+    err = send(sock, CONNECT, strlen(CONNECT), 0);
+    if (err < 0) {
+        ESP_LOGE(TAG, "Error occurred during sending LOGIN: errno %d", errno);
+        close(sock);
+    }
+    ESP_LOGI(TAG, "Login message sent: %s", CONNECT);
+
+    //Recibir respuesta del servidor
+    ESP_LOGI(TAG, "Waiting for data");
+    int len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
+    if (len < 0) {
+        if(errno != EWOULDBLOCK){
+            ESP_LOGE(TAG, "recv failed: errno %d", errno);
+        }else{
+            ESP_LOGI(TAG, "Timeout");
+        }
+    } else if (len == 0) {
+        ESP_LOGW(TAG, "Connection closed by server");
+    } else {
+        rx_buffer[len] = 0; // Null-terminate the received data
+        ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
+    }
+
+    //Bucle de comunicacion
     while (1) {
-        int sock = socket(addr_family, SOCK_STREAM, ip_protocol);
-        if (sock < 0) {
-            ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
-            vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso antes de reintentar
-            continue;
-        }
-        ESP_LOGI(TAG, "Socket created, connecting to %s:%d", HOST_IP_ADDR, PORT);
-
-        // Configura el socket como no bloqueante
-        int flags = fcntl(sock, F_GETFL, 0);
-        if (flags == -1) {
-            ESP_LOGE(TAG, "fcntl F_GETFL failed");
-        } else {
-            fcntl(sock, F_SETFL, flags | O_NONBLOCK);
-        }
-
-        int err = connect(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-        if (err != 0) {
-            ESP_LOGE(TAG, "Socket unable to connect: errno %d", errno);
-            close(sock);
-            vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso antes de reintentar
-            continue;
-        }
-        ESP_LOGI(TAG, "Successfully connected");
-
-        struct timeval timeout;
-        timeout.tv_sec = 2;  // Tiempo en segundos
-        timeout.tv_usec = 0; // Tiempo en microsegundos
-        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-
-        // Enviar mensaje de login
-        err = send(sock, CONNECT, strlen(CONNECT), 0);
-        if (err < 0) {
-            ESP_LOGE(TAG, "Error occurred during sending LOGIN: errno %d", errno);
-            close(sock);
-            continue;
-        }
-        ESP_LOGI(TAG, "Login message sent: %s", CONNECT);
-
-        //Recibir respuesta del servidor
+        //Esperar Comando del servidor
         ESP_LOGI(TAG, "Waiting for data");
         int len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
         if (len < 0) {
-            ESP_LOGE(TAG, "recv failed: errno %d", errno);
-            break;
+            if(errno != EWOULDBLOCK){
+                ESP_LOGE(TAG, "recv failed: errno %d", errno);
+                break;
+            }else{
+                ESP_LOGI(TAG, "Timeout");
+            }
         } else if (len == 0) {
             ESP_LOGW(TAG, "Connection closed by server");
             break;
@@ -380,54 +392,44 @@ static void tcp_client(void *pvParameters)
             ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
         }
 
-        //Bucle de comunicacion
-        while (1) {
-            if (_millis >= 10000)
-            {
-                // Enviar mensaje Keep-Alive cada 10 segundos
-                err = send(sock, KEEP_ALIVE, strlen(KEEP_ALIVE), 0);
-                if (err < 0) {
-                    ESP_LOGE(TAG, "Error occurred during sending KEEP_ALIVE: errno %d", errno);
-                    break;
-                }
-                ESP_LOGI(TAG, "Keep-Alive message sent: %s", KEEP_ALIVE);
+        if (_millis >= 10000 && len < 0)
+        {
+            // Enviar mensaje Keep-Alive cada 10 segundos
+            err = send(sock, KEEP_ALIVE, strlen(KEEP_ALIVE), 0);
+            if (err < 0) {
+                ESP_LOGE(TAG, "Error occurred during sending KEEP_ALIVE: errno %d", errno);
+                break;
+            }
+            ESP_LOGI(TAG, "Keep-Alive message sent: %s", KEEP_ALIVE);
 
-                //Recibir respuesta del servidor
-                ESP_LOGI(TAG, "Waiting for data");
-                int len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-                if (len < 0) {
+            //Recibir respuesta del servidor
+            ESP_LOGI(TAG, "Waiting for data");
+            int len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
+            if (len < 0) {
+                if(errno != EWOULDBLOCK){
                     ESP_LOGE(TAG, "recv failed: errno %d", errno);
                     break;
-                } else if (len == 0) {
-                    ESP_LOGW(TAG, "Connection closed by server");
-                    break;
-                } else {
-                    rx_buffer[len] = 0; // Null-terminate the received data
-                    ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
+                }else{
+                    ESP_LOGI(TAG, "Timeout");
                 }
+            } else if (len == 0) {
+                ESP_LOGW(TAG, "Connection closed by server");
+                break;
+            } else {
+                rx_buffer[len] = 0; // Null-terminate the received data
+                ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
+            }
 
-                _millis=0;
-            }else{
-                //Esperar Comando del servidor
-                ESP_LOGI(TAG, "Waiting for data");
-                int len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-                if (len < 0) {
-                    ESP_LOGE(TAG, "recv failed: errno %d", errno);
-                    break;
-                } else if (len == 0) {
-                    ESP_LOGW(TAG, "Connection closed by server");
-                    break;
-                } else {
-                    rx_buffer[len] = 0; // Null-terminate the received data
-                    ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
-                }
+            _millis=0;
+        }else{
+            // Initialize message with NACK
+            strcpy(message, "NACK");
 
-                // Initialize message with NACK
-                strcpy(message, "NACK");
-
-                //First token verify with command uabc
-                token = strtok(rx_buffer, ":");
-                if (token != NULL && !strcmp(token,"UABC")){
+            //First token verify with command uabc
+            token = strtok(rx_buffer, ":");
+            if (token != NULL && !strcmp(token,"UABC")){
+                token = strtok(NULL, ":");
+                if (token != NULL && !strcmp(token,"IPR")){
                     token = strtok(NULL, ":");//Verify operation read or write
                     if (token != NULL){
                         if (!strcmp(token, "W")){ //Only led
@@ -436,11 +438,13 @@ static void tcp_client(void *pvParameters)
                                 token = strtok(NULL, ":"); //Value
                                 if(token != NULL){
                                     if (!strcmp(token, "1")){ //Turn on LED
-                                        gpio_set_level(LED1, 1);
-                                        snprintf(message, sizeof(message), "ACK:%d", gpio_get_level(LED1));
+                                        led_state = true;
+                                        gpio_set_level(LED1, led_state);
+                                        snprintf(message, sizeof(message), "ACK:%d", led_state);
                                     }else if (!strcmp(token, "0")){ //Turn off LED
-                                        gpio_set_level(LED1, 0);
-                                        snprintf(message, sizeof(message), "ACK:%d", gpio_get_level(LED1));
+                                        led_state = false;
+                                        gpio_set_level(LED1, led_state);
+                                        snprintf(message, sizeof(message), "ACK:%d", led_state);
                                     }  
                                 }   
                             } 
@@ -468,10 +472,12 @@ static void tcp_client(void *pvParameters)
                             esp_restart();
                         }
                         
-                    } 
+                    }
                 }
-
-                // Enviar mensaje Keep-Alive cada 10 segundos
+            }
+            // Enviar Mensaje
+            if (!strcmp(message,"NACK"))
+            {
                 err = send(sock, message, strlen(message), 0);
                 if (err < 0) {
                     ESP_LOGE(TAG, "Error occurred during sending message: errno %d", errno);
@@ -480,15 +486,16 @@ static void tcp_client(void *pvParameters)
                 ESP_LOGI(TAG, "message sent: %s", message);
             }
         }
-
-        if (sock != -1) {
-            ESP_LOGI(TAG, "Shutting down socket and reconnecting...");
-            shutdown(sock, 0);
-            close(sock);
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso antes de reconectar
     }
+
+    if (sock != -1) {
+        ESP_LOGI(TAG, "Shutting down socket and reconnecting...");
+        shutdown(sock, 0);
+        close(sock);
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso antes de reconectar
+    
 }
 
 //Main proccess
@@ -536,6 +543,8 @@ void app_main(void)
 
         //Init wifi sta
         wifi_connection_sta();
+
+        delayMs(5000);
 
         //CLIENT TCP
         xTaskCreate(tcp_client, "tcp_client", 4096, (void*)AF_INET, 5, NULL); 
