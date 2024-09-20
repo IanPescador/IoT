@@ -388,75 +388,69 @@ static void tcp_client(void *pvParameters)
             ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
         }
 
-        if (strcmp(rx_buffer,"ACK")) //Verificar que es un comando
+        if (_millis >= 10000 && len < 0) //Mandar keep alive si no hay mensaje.
         {
-            if (_millis >= 10000 && len < 0) //Mandar keep alive si no hay mensaje.
-            {
-                // Enviar mensaje Keep-Alive cada 10 segundos
-                err = send(sock, KEEP_ALIVE, strlen(KEEP_ALIVE), 0);
-                if (err < 0) {
-                    ESP_LOGE(TAG, "Error occurred during sending KEEP_ALIVE: errno %d", errno);
-                    break;
-                }
-                ESP_LOGI(TAG, "Keep-Alive message sent: %s", KEEP_ALIVE);
-                _millis=0;
-            }else{
-                // Initialize message with NACK
-                strcpy(message, "NACK");
+            // Enviar mensaje Keep-Alive cada 10 segundos
+            err = send(sock, KEEP_ALIVE, strlen(KEEP_ALIVE), 0);
+            if (err < 0) {
+                ESP_LOGE(TAG, "Error occurred during sending KEEP_ALIVE: errno %d", errno);
+                break;
+            }
+            ESP_LOGI(TAG, "Keep-Alive message sent: %s", KEEP_ALIVE);
+            _millis=0;
+        }else if(len > 0){
+            // Initialize message with NACK
+            strcpy(message, "NACK");
 
-                //First token verify with command uabc
-                token = strtok(rx_buffer, ":");
-                if (token != NULL && !strcmp(token,"UABC")){
-                    token = strtok(NULL, ":");
-                    if (token != NULL && !strcmp(token,"IPR")){
-                        token = strtok(NULL, ":");//Verify operation read or write
-                        if (token != NULL){
-                            if (!strcmp(token, "W")){ //Only led
-                                token = strtok(NULL, ":"); //Element
-                                if (token != NULL && !strcmp(token, "L")){ //Element is LED
-                                    token = strtok(NULL, ":"); //Value
-                                    if(token != NULL){
-                                        if (!strcmp(token, "1")){ //Turn on LED
-                                            led_state = true;
-                                            gpio_set_level(LED1, led_state);
-                                            snprintf(message, sizeof(message), "ACK:%d", led_state);
-                                        }else if (!strcmp(token, "0")){ //Turn off LED
-                                            led_state = false;
-                                            gpio_set_level(LED1, led_state);
-                                            snprintf(message, sizeof(message), "ACK:%d", led_state);
-                                        }  
-                                    }   
-                                } 
-                            }else if(!strcmp(token, "R")){ //Led and ADC 
-                                token = strtok(NULL, ":"); //Element
-                                if (token != NULL){
-                                    if (!strcmp(token, "L")){ //Element is LED
+            //First token verify with command uabc
+            token = strtok(rx_buffer, ":");
+            if (token != NULL && !strcmp(token,"UABC")){
+                token = strtok(NULL, ":");
+                if (token != NULL && !strcmp(token,"IPR")){
+                    token = strtok(NULL, ":");//Verify operation read or write
+                    if (token != NULL){
+                        if (!strcmp(token, "W")){ //Only led
+                            token = strtok(NULL, ":"); //Element
+                            if (token != NULL && !strcmp(token, "L")){ //Element is LED
+                                token = strtok(NULL, ":"); //Value
+                                if(token != NULL){
+                                    if (!strcmp(token, "1")){ //Turn on LED
+                                        led_state = true;
+                                        gpio_set_level(LED1, led_state);
                                         snprintf(message, sizeof(message), "ACK:%d", led_state);
-                                    }else if (!strcmp(token, "A")){ //Element is ADC
-                                        snprintf(message, sizeof(message), "ACK:%d", ADC1_Ch0_Read_mV());
-                                    }
-                                }
-                            }else if (!strcmp(token, "FACTORY")) //Reset Factory
-                            {
-                                ESP_ERROR_CHECK(nvs_flash_erase());
-                                ESP_ERROR_CHECK(nvs_flash_init());
-
-                                ESP_LOGI(TAG, "NVS borrado exitosamente. Reiniciando el ESP32...");
-                                esp_restart();
+                                    }else if (!strcmp(token, "0")){ //Turn off LED
+                                        led_state = false;
+                                        gpio_set_level(LED1, led_state);
+                                        snprintf(message, sizeof(message), "ACK:%d", led_state);
+                                    }  
+                                }   
                             } 
-                        }
+                        }else if(!strcmp(token, "R")){ //Led and ADC 
+                            token = strtok(NULL, ":"); //Element
+                            if (token != NULL){
+                                if (!strcmp(token, "L")){ //Element is LED
+                                    snprintf(message, sizeof(message), "ACK:%d", led_state);
+                                }else if (!strcmp(token, "A")){ //Element is ADC
+                                    snprintf(message, sizeof(message), "ACK:%d", ADC1_Ch0_Read_mV());
+                                }
+                            }
+                        }else if (!strcmp(token, "FACTORY")) //Reset Factory
+                        {
+                            ESP_ERROR_CHECK(nvs_flash_erase());
+                            ESP_ERROR_CHECK(nvs_flash_init());
+
+                            ESP_LOGI(TAG, "NVS borrado exitosamente. Reiniciando el ESP32...");
+                            esp_restart();
+                        } 
                     }
                 }
                 // Enviar Mensaje
-                if (strcmp(message,"NACK"))
-                {
-                    err = send(sock, message, strlen(message), 0);
-                    if (err < 0) {
-                        ESP_LOGE(TAG, "Error occurred during sending message: errno %d", errno);
-                        break;
-                    }
-                    ESP_LOGI(TAG, "message sent: %s", message);
+                err = send(sock, message, strlen(message), 0);
+                if (err < 0) {
+                    ESP_LOGE(TAG, "Error occurred during sending message: errno %d", errno);
+                    break;
                 }
+                ESP_LOGI(TAG, "message sent: %s", message);
             }
         }
     }
@@ -471,7 +465,6 @@ static void tcp_client(void *pvParameters)
     // Eliminar la tarea antes de retornar
     vTaskDelete(NULL);
 }
-
 
 //Main proccess
 void app_main(void)
