@@ -1,4 +1,4 @@
-#include "DB_main.h"
+#include "exa.h"
 
 // Delay ms
 static void delayMs(uint16_t ms)
@@ -48,12 +48,10 @@ void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id
     } else if (event_id == WIFI_EVENT_STA_CONNECTED) 
     {
         ESP_LOGI(TAG, "Connected to the master's Wi-Fi network");
-        wifi_connect = true;
     } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) 
     {
         wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
         ESP_LOGE(TAG, "Disconnected from the master's Wi-Fi network, reason: %d", event->reason);
-        wifi_connect = false;
         esp_wifi_connect();
     } else if (event_id == IP_EVENT_STA_GOT_IP) 
     {
@@ -148,7 +146,6 @@ void wifi_init_softap(void)
     ESP_LOGI(TAG, "Wi-Fi initialization complete.");
     ESP_LOGI(TAG, "SSID: %s", WIFI_SSID);
     ESP_LOGI(TAG, "Password: %s", WIFI_PASS);
-    wifi_connect = true;
 }
 
 // function to save in nvs
@@ -177,34 +174,6 @@ void save_to_nvs(const char* key, const char* value) {
 
     // Cerrar NVS
     nvs_close(nvs_handle);
-}
-
-// HTTP Handler
-esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
-    switch(evt->event_id) {
-        case HTTP_EVENT_ON_DATA:
-            // Si se reciben menos datos que el tamaño del buffer, copiar la respuesta
-            if (evt->data_len < sizeof(public_ip)) {
-                strncpy(public_ip, (char*)evt->data, evt->data_len);
-                public_ip[evt->data_len] = '\0';  // Asegúrate de que la cadena termine en nulo
-            }
-            break;
-        default:
-            break;
-    }
-    return ESP_OK;
-}
-
-// Get Public Id
-void get_public_ip() {
-    esp_http_client_config_t config = {
-        .url = "http://api.ipify.org",  // URL de ipify para obtener la IP pública
-        .event_handler = _http_event_handler,
-    };
-
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    esp_http_client_perform(client);  
-    esp_http_client_cleanup(client);
 }
 
 //UDP SERVER
@@ -419,75 +388,69 @@ static void tcp_client(void *pvParameters)
             ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
         }
 
-        if (strcmp(rx_buffer,"ACK")) //Verificar que es un comando
+        if (_millis >= 10000 && len < 0) //Mandar keep alive si no hay mensaje.
         {
-            if (_millis >= 10000 && len < 0) //Mandar keep alive si no hay mensaje.
-            {
-                // Enviar mensaje Keep-Alive cada 10 segundos
-                err = send(sock, KEEP_ALIVE, strlen(KEEP_ALIVE), 0);
-                if (err < 0) {
-                    ESP_LOGE(TAG, "Error occurred during sending KEEP_ALIVE: errno %d", errno);
-                    break;
-                }
-                ESP_LOGI(TAG, "Keep-Alive message sent: %s", KEEP_ALIVE);
-                _millis=0;
-            }else{
-                // Initialize message with NACK
-                strcpy(message, "NACK");
+            // Enviar mensaje Keep-Alive cada 10 segundos
+            err = send(sock, KEEP_ALIVE, strlen(KEEP_ALIVE), 0);
+            if (err < 0) {
+                ESP_LOGE(TAG, "Error occurred during sending KEEP_ALIVE: errno %d", errno);
+                break;
+            }
+            ESP_LOGI(TAG, "Keep-Alive message sent: %s", KEEP_ALIVE);
+            _millis=0;
+        }else if(len > 0){
+            // Initialize message with NACK
+            strcpy(message, "NACK");
 
-                //First token verify with command uabc
-                token = strtok(rx_buffer, ":");
-                if (token != NULL && !strcmp(token,"UABC")){
-                    token = strtok(NULL, ":");
-                    if (token != NULL && !strcmp(token,"IPR")){
-                        token = strtok(NULL, ":");//Verify operation read or write
-                        if (token != NULL){
-                            if (!strcmp(token, "W")){ //Only led
-                                token = strtok(NULL, ":"); //Element
-                                if (token != NULL && !strcmp(token, "L")){ //Element is LED
-                                    token = strtok(NULL, ":"); //Value
-                                    if(token != NULL){
-                                        if (!strcmp(token, "1")){ //Turn on LED
-                                            led_state = true;
-                                            gpio_set_level(LED1, led_state);
-                                            snprintf(message, sizeof(message), "ACK:%d", led_state);
-                                        }else if (!strcmp(token, "0")){ //Turn off LED
-                                            led_state = false;
-                                            gpio_set_level(LED1, led_state);
-                                            snprintf(message, sizeof(message), "ACK:%d", led_state);
-                                        }  
-                                    }   
-                                } 
-                            }else if(!strcmp(token, "R")){ //Led and ADC 
-                                token = strtok(NULL, ":"); //Element
-                                if (token != NULL){
-                                    if (!strcmp(token, "L")){ //Element is LED
+            //First token verify with command uabc
+            token = strtok(rx_buffer, ":");
+            if (token != NULL && !strcmp(token,"UABC")){
+                token = strtok(NULL, ":");
+                if (token != NULL && !strcmp(token,"IPR")){
+                    token = strtok(NULL, ":");//Verify operation read or write
+                    if (token != NULL){
+                        if (!strcmp(token, "W")){ //Only led
+                            token = strtok(NULL, ":"); //Element
+                            if (token != NULL && !strcmp(token, "L")){ //Element is LED
+                                token = strtok(NULL, ":"); //Value
+                                if(token != NULL){
+                                    if (!strcmp(token, "1")){ //Turn on LED
+                                        led_state = true;
+                                        gpio_set_level(LED1, led_state);
                                         snprintf(message, sizeof(message), "ACK:%d", led_state);
-                                    }else if (!strcmp(token, "A")){ //Element is ADC
-                                        snprintf(message, sizeof(message), "ACK:%d", ADC1_Ch0_Read());
-                                    }
-                                }
-                            }else if (!strcmp(token, "FACTORY")) //Reset Factory
-                            {
-                                ESP_ERROR_CHECK(nvs_flash_erase());
-                                ESP_ERROR_CHECK(nvs_flash_init());
-
-                                ESP_LOGI(TAG, "NVS borrado exitosamente. Reiniciando el ESP32...");
-                                esp_restart();
+                                    }else if (!strcmp(token, "0")){ //Turn off LED
+                                        led_state = false;
+                                        gpio_set_level(LED1, led_state);
+                                        snprintf(message, sizeof(message), "ACK:%d", led_state);
+                                    }  
+                                }   
                             } 
-                        }
+                        }else if(!strcmp(token, "R")){ //Led and ADC 
+                            token = strtok(NULL, ":"); //Element
+                            if (token != NULL){
+                                if (!strcmp(token, "L")){ //Element is LED
+                                    snprintf(message, sizeof(message), "ACK:%d", led_state);
+                                }else if (!strcmp(token, "A")){ //Element is ADC
+                                    snprintf(message, sizeof(message), "ACK:%d", ADC1_Ch0_Read_mV());
+                                }
+                            }
+                        }else if (!strcmp(token, "FACTORY")) //Reset Factory
+                        {
+                            ESP_ERROR_CHECK(nvs_flash_erase());
+                            ESP_ERROR_CHECK(nvs_flash_init());
+
+                            ESP_LOGI(TAG, "NVS borrado exitosamente. Reiniciando el ESP32...");
+                            esp_restart();
+                        } 
                     }
                 }
                 // Enviar Mensaje
-                if (strcmp(message,"NACK"))
-                {
-                    err = send(sock, message, strlen(message), 0);
-                    if (err < 0) {
-                        ESP_LOGE(TAG, "Error occurred during sending message: errno %d", errno);
-                        break;
-                    }
-                    ESP_LOGI(TAG, "message sent: %s", message);
+                err = send(sock, message, strlen(message), 0);
+                if (err < 0) {
+                    ESP_LOGE(TAG, "Error occurred during sending message: errno %d", errno);
+                    break;
                 }
+                ESP_LOGI(TAG, "message sent: %s", message);
             }
         }
     }
@@ -501,32 +464,6 @@ static void tcp_client(void *pvParameters)
     
     // Eliminar la tarea antes de retornar
     vTaskDelete(NULL);
-}
-
-//DB WRITE
-static void DB_WRITE(void *pvParameters)
-{
-    int RSSI=0;
-    while (1)
-    {
-        if (_DBsec >= 300)
-        {
-            printf("DEVICE: %s\n", KEY);
-            esp_wifi_sta_get_rssi(&RSSI);
-            printf("RSSI: %d\n",RSSI);
-            get_public_ip();
-            printf("IP: %s\n",public_ip);
-            printf("LED: %d\n", led_state);
-            printf("ADC: %d\n\n", ADC1_Ch0_Read());
-
-            //Process to send data to database
-            
-            
-            _DBsec=0;
-        }
-        delayMs(1000);
-        _DBsec++;
-    } 
 }
 
 //Main proccess
@@ -574,21 +511,14 @@ void app_main(void)
 
         //Init wifi sta
         wifi_connection_sta();
-        
-        while(!wifi_connect){delayMs(1);}
 
         //CLIENT TCP
         xTaskCreate(tcp_client, "tcp_client", 4096, (void*)AF_INET, 5, NULL); 
-
-        //DB WRITE
-        xTaskCreate(DB_WRITE, "DB_WRITE", 4096, NULL, 6, NULL);
     }else{
         // Config Code
         ESP_LOGI(TAG, "Variables no encontradas, ejecutando el código de configuracion.");
         ESP_LOGI(TAG, "ESP_WIFI_MODE_AP");
         wifi_init_softap();
-
-        while(!wifi_connect){delayMs(1);}
 
         //Server UDP
         xTaskCreate(udp_server_task, "udp_server", 4096, (void*)AF_INET, 5, NULL);
@@ -599,4 +529,5 @@ void app_main(void)
         _millis++;
         delayMs(1);
     }
+    
 }
