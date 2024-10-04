@@ -25,6 +25,7 @@
 #include "lwip/err.h"
 #include "lwip/sockets.h"
 #include "lwip/sys.h"
+#include "driver/ledc.h"
 #include <lwip/netdb.h>
 
 bool config_complete = false;
@@ -48,10 +49,22 @@ uint32_t _millis=0;
 #define PORT 8266                    
 
 bool led_state;
-#define LED1 GPIO_NUM_5
+#define LED1 GPIO_NUM_17 //LED NORMAL
+
+#define LEDC_TIMER              LEDC_TIMER_0
+#define LEDC_MODE               LEDC_LOW_SPEED_MODE
+#define LEDC_OUTPUT_IO          (5) // output GPIO
+#define LEDC_CHANNEL            LEDC_CHANNEL_0
+#define LEDC_DUTY_RES           LEDC_TIMER_13_BIT 
+#define LEDC_FREQUENCY          (5000) // Set frequency at 5 kHz
+
+uint8_t PWM = 0;   //Valor entre 0 y 100 %
+uint32_t DUTY_VALUE = 0; //Valor del duty para el PWM
+#define LED_MAX_DUTY 8191     // Duty cycle máximo para LEDC
 
 void ADC1_Ch0_Init(void);
 uint16_t ADC1_Ch0_Read(void);
 uint16_t ADC1_Ch0_Read_mV(void);
+static void ledc_init(void);
 
 #endif /* MAIN_H */

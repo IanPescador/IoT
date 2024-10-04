@@ -6,6 +6,32 @@ static void delayMs(uint16_t ms)
     vTaskDelay(ms / portTICK_PERIOD_MS);
 }
 
+//Init led PWM
+static void ledc_init(void)
+{
+    // Prepare and then apply the LEDC PWM timer configuration
+    ledc_timer_config_t ledc_timer = {
+        .speed_mode       = LEDC_MODE,
+        .timer_num        = LEDC_TIMER,
+        .duty_resolution  = LEDC_DUTY_RES,
+        .freq_hz          = LEDC_FREQUENCY,  // Set output frequency at 5 kHz
+        .clk_cfg          = LEDC_AUTO_CLK
+    };
+    ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
+
+    // Prepare and then apply the LEDC PWM channel configuration
+    ledc_channel_config_t ledc_channel = {
+        .speed_mode     = LEDC_MODE,
+        .channel        = LEDC_CHANNEL,
+        .timer_sel      = LEDC_TIMER,
+        .intr_type      = LEDC_INTR_DISABLE,
+        .gpio_num       = LEDC_OUTPUT_IO,
+        .duty           = 0, // Set duty to 0%
+        .hpoint         = 0
+    };
+    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
+}
+
 // Inititilization of ADC1 Channel 0 (VP on ESP32)
 void ADC1_Ch0_Ini(void){
     //ADC1_0 config
@@ -36,6 +62,9 @@ static void InitIO(void){
 
     //ADC
     ADC1_Ch0_Ini();
+
+    //LED PWM
+    ledc_init();
 }
 
 //handler event wifi sta
@@ -424,7 +453,30 @@ static void tcp_client(void *pvParameters)
                                         snprintf(message, sizeof(message), "ACK:%d", led_state);
                                     }  
                                 }   
-                            } 
+                            }else if (token != NULL && !strcmp(token, "P"))
+                            {
+                                token = strtok(NULL, ":"); //Value
+                                if(token != NULL){
+                                    if (!strcmp(token, "0"))
+                                    {
+                                        PWM = 0;
+                                        DUTY_VALUE = 0; //Valor en 0
+                                        // Establecer el nuevo valor de intensidad del LED
+                                        ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, DUTY_VALUE));
+                                        ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
+
+                                        snprintf(message, sizeof(message), "ACK:%d", PWM);
+                                    }else{
+                                        PWM = atoi(token);
+                                        DUTY_VALUE = LED_MAX_DUTY * PWM / 100; //Sacar porcentaje
+                                        // Establecer el nuevo valor de intensidad del LED
+                                        ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, DUTY_VALUE));
+                                        ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
+
+                                        snprintf(message, sizeof(message), "ACK:%d", PWM);
+                                    }
+                                }
+                            }
                         }else if(!strcmp(token, "R")){ //Led and ADC 
                             token = strtok(NULL, ":"); //Element
                             if (token != NULL){
@@ -432,6 +484,8 @@ static void tcp_client(void *pvParameters)
                                     snprintf(message, sizeof(message), "ACK:%d", led_state);
                                 }else if (!strcmp(token, "A")){ //Element is ADC
                                     snprintf(message, sizeof(message), "ACK:%d", ADC1_Ch0_Read_mV());
+                                }else if (!strcmp(token, "P")){ //Element is PWM
+                                    snprintf(message, sizeof(message), "ACK:%d", PWM);
                                 }
                             }
                         }else if (!strcmp(token, "FACTORY")) //Reset Factory
