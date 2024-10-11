@@ -30,10 +30,12 @@
 
 bool config_complete = false;
 
-static const char *TAG = "TCP_CLIENT";
+char *TAG = "TCP_CLIENT";
 static const char *KEEP_ALIVE = "UABC:IPR:K:S:KeepAlive"; //Enviar cada 10 seg
 static const char *CONNECT = "UABC:IPR:L:S:LoginServer"; //Enviar al conectar
-static const char *SMS = "UABC:IPR:M:S:6641896966:SILKSONG"; //Enviar Mensaje SMS
+static const char *password;
+char cifrado[128];
+//static const char *SMS = "UABC:IPR:M:S:6641896966:SILKSONG"; //Enviar Mensaje SMS
 
 #define WIFI_SSID       "WifiConfig"
 #define WIFI_PASS       "Password"
@@ -47,7 +49,7 @@ uint32_t _millis=0;
 #define WIFI_CHANNEL    1
 
 #define HOST_IP_ADDR "82.180.173.228" //iot-uabc.site  
-#define PORT 8266                    
+#define PORT 8277                  
 
 bool led_state;
 #define LED1 GPIO_NUM_17 //LED NORMAL

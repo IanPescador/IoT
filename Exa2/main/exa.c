@@ -6,6 +6,34 @@ static void delayMs(uint16_t ms)
     vTaskDelay(ms / portTICK_PERIOD_MS);
 }
 
+// Cifrar palabra
+static void cifrar (char *cif,char *string, char *clave){
+    uint8_t len = strlen(string);
+    uint8_t i=0, j = 0;
+    uint8_t len_clave = strlen(clave);
+    for (i = 0; i < len - 1; i++)
+    {
+        cif[i] = string[i] ^ clave[j];
+        j++;
+        if (j > len_clave)
+        {
+            j = 0;
+        }
+    }
+    cif[i] = '\r';
+}
+
+// Descifrar
+char *descifrar (char *string){
+    int8_t i = 0;
+    while (string[i] != '\r')
+    {
+        string[i] = string[i] ^ 0x55; 
+        i++;
+    }
+    return string;
+}
+
 //Init led PWM
 static void ledc_init(void)
 {
@@ -397,6 +425,30 @@ static void tcp_client(void *pvParameters)
 
     delayMs(100);
 
+    //Esperar Contraseña del servidor
+    ESP_LOGI(TAG, "Waiting for data");
+    int len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
+    if (len < 0) {
+        if(errno != EWOULDBLOCK){
+            ESP_LOGE(TAG, "recv failed: errno %d", errno);
+        }else{
+            ESP_LOGI(TAG, "Timeout");
+        }
+    } else if (len == 0) {
+        ESP_LOGW(TAG, "Connection closed by server");
+    } else {
+        ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
+        rx_buffer[len] = 0; // Null-terminate the received data
+        //First token verify with password ACK
+        token = strtok(rx_buffer, ":");
+        if (token != NULL && !strcmp(token,"ACK")){
+            token = strtok(NULL, ":"); //Take password from server
+            printf("Contraseña cifrada: %s\n", token);
+            password = descifrar(token);
+            printf("Contraseña descifrada: %s\n", password);
+        }
+    }
+
     /*
     // Enviar mensaje de SMS
     err = send(sock, SMS, strlen(SMS), 0);
@@ -425,14 +477,19 @@ static void tcp_client(void *pvParameters)
             ESP_LOGW(TAG, "Connection closed by server");
             break;
         } else {
-            rx_buffer[len] = 0; // Null-terminate the received data
+            rx_buffer[len] = '\r'; // Null-terminate the received data
             ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
+            cifrar(cifrado, rx_buffer, password);
+            ESP_LOGI(TAG, "Received %s", cifrado);
         }
 
         if (_millis >= 10000 && len < 0) //Mandar keep alive si no hay mensaje.
         {
+            printf("Entre a keep alive\n");
             // Enviar mensaje Keep-Alive cada 10 segundos
-            err = send(sock, KEEP_ALIVE, strlen(KEEP_ALIVE), 0);
+            cifrar(cifrado, KEEP_ALIVE, password);
+            ESP_LOGI(TAG, "KEEP_ALIVE cifrafo %s", cifrado);
+            err = send(sock, cifrado, strlen(KEEP_ALIVE), 0);
             if (err < 0) {
                 ESP_LOGE(TAG, "Error occurred during sending KEEP_ALIVE: errno %d", errno);
                 break;
