@@ -494,7 +494,8 @@ static void tcp_client(void *pvParameters)
                 ESP_LOGE(TAG, "Error occurred during sending KEEP_ALIVE: errno %d", errno);
                 break;
             }
-            ESP_LOGI(TAG, "Keep-Alive message sent: %s", KEEP_ALIVE);
+            cifrar(cifrado, cifrado, password);
+            ESP_LOGI(TAG, "Keep-Alive message sent: %s", cifrado);
             _millis=0;
         }else if(len > 0){
             // Initialize message with NACK
