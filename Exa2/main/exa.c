@@ -30,6 +30,7 @@ static void descifrar (char *string, char *clave){
     clave[i] = 0;
 }
 
+//GET PASSWORD
 static void get_password(char *password, char *message){
     char *token;
 
@@ -92,10 +93,15 @@ static void InitIO(void){
 
     //RESETS
     gpio_reset_pin(LED1);
+    gpio_reset_pin(BUTTON);
     
     //LEDS
     gpio_set_direction(LED1, GPIO_MODE_OUTPUT);
 
+    //BUTTON
+    gpio_set_direction(BUTTON, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(BUTTON, GPIO_PULLDOWN_ONLY);
+    
     //ADC
     ADC1_Ch0_Ini();
 
@@ -579,8 +585,20 @@ static void tcp_client(void *pvParameters)
             send_server(sock, cifrado);
             _millis=0;
         }
+
+        if (button_pressed)
+        {
+            // Cifrar el mensaje antes de enviarlo
+            cifrar(cifrado, SMS, strlen(SMS), password, strlen(password));
+
+            // Enviar mensaje cifrado al servidor
+            send_server(sock, cifrado);
+
+            button_pressed = false;
+        }
+        
     }
-    
+
     if (sock != -1) {
         ESP_LOGI(TAG, "Shutting down socket and reconnecting...");
         shutdown(sock, 0);
@@ -640,6 +658,27 @@ void app_main(void)
 
         //CLIENT TCP
         xTaskCreate(tcp_client, "tcp_client", 4096, (void*)AF_INET, 5, NULL); 
+
+        while (1)
+        {
+            static bool button_state = true; 
+            static bool last_button_state = true; 
+
+            // Leer el estado actual del botón
+            button_state = gpio_get_level(BUTTON);
+
+            // Detectar el flanco ascendente (transición de 1 a 0)
+            if (!button_state && last_button_state) {
+                ESP_LOGI(TAG, "Botón presionado, enviando mensaje al servidor");
+                button_pressed = true;
+            }
+
+            // Guardar el estado actual como el último estado para la próxima detección
+            last_button_state = button_state;
+
+            _millis++;
+            delayMs(1);
+        }
     }else{
         // Config Code
         ESP_LOGI(TAG, "Variables no encontradas, ejecutando el código de configuracion.");
@@ -648,12 +687,7 @@ void app_main(void)
 
         //Server UDP
         xTaskCreate(udp_server_task, "udp_server", 4096, (void*)AF_INET, 5, NULL);
-    }
 
-    while (1)
-    {
-        _millis++;
-        delayMs(1);
+        while(1){}
     }
-    
 }

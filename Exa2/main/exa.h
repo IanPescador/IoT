@@ -29,11 +29,12 @@
 #include <lwip/netdb.h>
 
 bool config_complete = false;
+bool button_pressed = false;
 
 char *TAG = "TCP_CLIENT";
 static const char *KEEP_ALIVE = "UABC:IPR:K:S:KeepAlive"; //Enviar cada 10 seg
 static const char *CONNECT = "UABC:IPR:L:S:LoginServer"; //Enviar al conectar
-//static const char *SMS = "UABC:IPR:M:S:6641896966:SILKSONG"; //Enviar Mensaje SMS
+static const char *SMS = "UABC:IPR:W:SMS:6641896966:SILKSONG"; //Enviar Mensaje SMS
 
 #define WIFI_SSID       "WifiConfig"
 #define WIFI_PASS       "Password"
@@ -51,6 +52,8 @@ uint32_t _millis=0;
 
 bool led_state;
 #define LED1 GPIO_NUM_17 //LED NORMAL
+#define BUTTON GPIO_NUM_25 // BOTON
+
 
 #define LEDC_TIMER              LEDC_TIMER_0
 #define LEDC_MODE               LEDC_LOW_SPEED_MODE
