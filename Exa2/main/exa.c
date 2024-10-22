@@ -7,31 +7,40 @@ static void delayMs(uint16_t ms)
 }
 
 // Cifrar palabra
-static void cifrar (char *cif,char *string, char *clave){
-    uint8_t len = strlen(string);
-    uint8_t i=0, j = 0;
-    uint8_t len_clave = strlen(clave);
-    for (i = 0; i < len - 1; i++)
-    {
+static void cifrar(char *cif, const char *string, int size_str, const char *clave, int size_clave) {
+    uint8_t i = 0, j = 0;
+    for (i = 0; i < size_str; i++) {
         cif[i] = string[i] ^ clave[j];
+        
         j++;
-        if (j > len_clave)
-        {
+        if (j >= size_clave)
             j = 0;
-        }
     }
-    cif[i] = '\r';
+    cif[i] = '\0';  // Terminar la cadena con '\0'
 }
 
 // Descifrar
-char *descifrar (char *string){
+static void descifrar (char *string, char *clave){
     int8_t i = 0;
     while (string[i] != '\r')
     {
-        string[i] = string[i] ^ 0x55; 
+        clave[i] = string[i] ^ 0x55; 
         i++;
     }
-    return string;
+    clave[i] = 0;
+}
+
+//GET PASSWORD
+static void get_password(char *password, char *message){
+    char *token;
+
+    //First token verify with password ACK
+    token = strtok(message, ":");
+    if (token != NULL && !strcmp(token,"ACK")){
+        token = strtok(NULL, ":"); //Take password from server
+        descifrar(token, password);
+        ESP_LOGI(TAG, "Received %s Len %d", password, strlen(password));
+    }
 }
 
 //Init led PWM
@@ -84,10 +93,15 @@ static void InitIO(void){
 
     //RESETS
     gpio_reset_pin(LED1);
+    gpio_reset_pin(BUTTON);
     
     //LEDS
     gpio_set_direction(LED1, GPIO_MODE_OUTPUT);
 
+    //BUTTON
+    gpio_set_direction(BUTTON, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(BUTTON, GPIO_PULLDOWN_ONLY);
+    
     //ADC
     ADC1_Ch0_Ini();
 
@@ -369,14 +383,12 @@ static void udp_server_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-//TCP CLIENT
-static void tcp_client(void *pvParameters)
-{
-    char rx_buffer[128];
-    char message[128];
+//CREATE TCP SOCKET
+int create_tcp_socket(){
+    int sock, err;
+
     int addr_family = AF_INET;
     int ip_protocol = IPPROTO_IP;
-    char *token;
 
     // Configuración de la dirección del servidor
     struct sockaddr_in dest_addr;
@@ -384,9 +396,6 @@ static void tcp_client(void *pvParameters)
     dest_addr.sin_family = AF_INET;
     dest_addr.sin_port = htons(PORT);
     ip_protocol = IPPROTO_IP;
-
-    int sock;
-    int err;
 
     // Intentar la conexión hasta que sea exitosa
     while (1) {
@@ -415,19 +424,26 @@ static void tcp_client(void *pvParameters)
     timeout.tv_usec = 0; // Tiempo en microsegundos
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
-    // Enviar mensaje de login
-    err = send(sock, CONNECT, strlen(CONNECT), 0);
+    return sock; // Regresar el socket creado y configurado
+}
+
+//SEND TO SERVER
+static void send_server(int sock, char* message){
+    int err;
+    ESP_LOGI(TAG, "Message size: %d", strlen(message));
+    err = send(sock, message, strlen(message), 0);
     if (err < 0) {
         ESP_LOGE(TAG, "Error occurred during sending LOGIN: errno %d", errno);
         close(sock);
     }
-    ESP_LOGI(TAG, "Login message sent: %s", CONNECT);
+    ESP_LOGI(TAG, "Message sent: %s", message);
+}
 
-    delayMs(100);
-
+//RECEIVE SERVER
+int receive_server(int sock, char* receive, int buf_size) {
     //Esperar Contraseña del servidor
     ESP_LOGI(TAG, "Waiting for data");
-    int len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
+    int len = recv(sock, receive, buf_size - 1, 0);  // Usamos buf_size - 1 para dejar espacio para el terminador null
     if (len < 0) {
         if(errno != EWOULDBLOCK){
             ESP_LOGE(TAG, "recv failed: errno %d", errno);
@@ -437,66 +453,53 @@ static void tcp_client(void *pvParameters)
     } else if (len == 0) {
         ESP_LOGW(TAG, "Connection closed by server");
     } else {
-        ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
-        rx_buffer[len] = 0; // Null-terminate the received data
-        //First token verify with password ACK
-        token = strtok(rx_buffer, ":");
-        if (token != NULL && !strcmp(token,"ACK")){
-            token = strtok(NULL, ":"); //Take password from server
-            printf("Contraseña cifrada: %s\n", token);
-            password = descifrar(token);
-            printf("Contraseña descifrada: %s\n", password);
-        }
+        ESP_LOGI(TAG, "Received %d bytes: %s", len, receive);
+        receive[len] = 0; // Null-terminate the received data
     }
+    return len;
+}
+
+//TCP CLIENT
+static void tcp_client(void *pvParameters)
+{
+    char rx_buffer[128];
+    char message[128];
+    char cifrado[128];
+    char password[20];
+    char *token;
+
+    int sock;
+    int len;
+
+    sock = create_tcp_socket();
+
+    // Enviar mensaje de login
+    send_server(sock, CONNECT);
+
+    delayMs(100);
+
+    //Esperar Contraseña del servidor
+    len = receive_server(sock, rx_buffer, sizeof(rx_buffer));  
+    
+    //Get password from server
+    get_password(password, rx_buffer);
 
     /*
     // Enviar mensaje de SMS
-    err = send(sock, SMS, strlen(SMS), 0);
-    if (err < 0) {
-        ESP_LOGE(TAG, "Error occurred during sending LOGIN: errno %d", errno);
-        close(sock);
-    }
-    ESP_LOGI(TAG, "Login message sent: %s", SMS);
-
+    send_server(sock, SMS);
     delayMs(100);
     */
 
     //Bucle de comunicacion
     while (1) {
         //Esperar Comando del servidor
-        ESP_LOGI(TAG, "Waiting for data");
-        int len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-        if (len < 0) {
-            if(errno != EWOULDBLOCK){
-                ESP_LOGE(TAG, "recv failed: errno %d", errno);
-                break;
-            }else{
-                ESP_LOGI(TAG, "Timeout");
-            }
-        } else if (len == 0) {
-            ESP_LOGW(TAG, "Connection closed by server");
-            break;
-        } else {
-            rx_buffer[len] = '\r'; // Null-terminate the received data
-            ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
-            cifrar(cifrado, rx_buffer, password);
-            ESP_LOGI(TAG, "Received %s", cifrado);
-        }
+        len = receive_server(sock, rx_buffer, sizeof(rx_buffer));
 
-        if (_millis >= 10000 && len < 0) //Mandar keep alive si no hay mensaje.
-        {
-            printf("Entre a keep alive\n");
-            // Enviar mensaje Keep-Alive cada 10 segundos
-            cifrar(cifrado, KEEP_ALIVE, password);
-            ESP_LOGI(TAG, "KEEP_ALIVE cifrafo %s", cifrado);
-            err = send(sock, cifrado, strlen(KEEP_ALIVE), 0);
-            if (err < 0) {
-                ESP_LOGE(TAG, "Error occurred during sending KEEP_ALIVE: errno %d", errno);
-                break;
-            }
-            ESP_LOGI(TAG, "Keep-Alive message sent: %s", KEEP_ALIVE);
-            _millis=0;
-        }else if(len > 0){
+        if(len > 0){
+            //Descrifrar mensaje recibido
+            cifrar(cifrado, rx_buffer, len, password, strlen(password));
+            ESP_LOGI(TAG, "Receive cifrado: %s", cifrado);
+
             // Initialize message with NACK
             strcpy(message, "NACK");
 
@@ -567,17 +570,35 @@ static void tcp_client(void *pvParameters)
                         } 
                     }
                 }
+                // Cifrar mensaje
+                cifrar(cifrado, message, strlen(message), password, strlen(password));
+
                 // Enviar Mensaje
-                err = send(sock, message, strlen(message), 0);
-                if (err < 0) {
-                    ESP_LOGE(TAG, "Error occurred during sending message: errno %d", errno);
-                    break;
-                }
-                ESP_LOGI(TAG, "message sent: %s", message);
+                send_server(sock, cifrado);
             }
+        }else if (_millis >= 10000) //Mandar keep alive si no hay mensaje.
+        {
+            ESP_LOGI(TAG, "Entre a keep alive\n");
+            // Enviar mensaje Keep-Alive cada 10 segundos
+            cifrar(cifrado, KEEP_ALIVE, strlen(KEEP_ALIVE), password, strlen(password));
+
+            send_server(sock, cifrado);
+            _millis=0;
         }
+
+        if (button_pressed)
+        {
+            // Cifrar el mensaje antes de enviarlo
+            cifrar(cifrado, SMS, strlen(SMS), password, strlen(password));
+
+            // Enviar mensaje cifrado al servidor
+            send_server(sock, cifrado);
+
+            button_pressed = false;
+        }
+        
     }
-    
+
     if (sock != -1) {
         ESP_LOGI(TAG, "Shutting down socket and reconnecting...");
         shutdown(sock, 0);
@@ -637,6 +658,27 @@ void app_main(void)
 
         //CLIENT TCP
         xTaskCreate(tcp_client, "tcp_client", 4096, (void*)AF_INET, 5, NULL); 
+
+        while (1)
+        {
+            static bool button_state = true; 
+            static bool last_button_state = true; 
+
+            // Leer el estado actual del botón
+            button_state = gpio_get_level(BUTTON);
+
+            // Detectar el flanco ascendente (transición de 1 a 0)
+            if (!button_state && last_button_state) {
+                ESP_LOGI(TAG, "Botón presionado, enviando mensaje al servidor");
+                button_pressed = true;
+            }
+
+            // Guardar el estado actual como el último estado para la próxima detección
+            last_button_state = button_state;
+
+            _millis++;
+            delayMs(1);
+        }
     }else{
         // Config Code
         ESP_LOGI(TAG, "Variables no encontradas, ejecutando el código de configuracion.");
@@ -645,12 +687,7 @@ void app_main(void)
 
         //Server UDP
         xTaskCreate(udp_server_task, "udp_server", 4096, (void*)AF_INET, 5, NULL);
-    }
 
-    while (1)
-    {
-        _millis++;
-        delayMs(1);
+        while(1){}
     }
-    
 }
