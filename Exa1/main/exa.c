@@ -397,7 +397,7 @@ static void tcp_client(void *pvParameters)
 
     delayMs(100);
 
-    /*
+    
     // Enviar mensaje de SMS
     err = send(sock, SMS, strlen(SMS), 0);
     if (err < 0) {
@@ -407,7 +407,7 @@ static void tcp_client(void *pvParameters)
     ESP_LOGI(TAG, "Login message sent: %s", SMS);
 
     delayMs(100);
-    */
+    
 
     //Bucle de comunicacion
     while (1) {
