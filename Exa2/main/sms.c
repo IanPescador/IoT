@@ -1,4 +1,4 @@
-#include "exa.h"
+#include "sms.h"
 
 // Delay ms
 static void delayMs(uint16_t ms)
@@ -247,6 +247,11 @@ void save_to_nvs(const char* key, const char* value) {
     nvs_close(nvs_handle);
 }
 
+//CREATE UDP SOCKET
+int create_udp_socket(){
+    return 1;
+}
+
 //UDP SERVER
 static void udp_server_task(void *pvParameters)
 {
@@ -428,7 +433,7 @@ int create_tcp_socket(){
 }
 
 //SEND TO SERVER
-static void send_server(int sock, char* message){
+static void send_server_tcp(int sock, char* message){
     int err;
     ESP_LOGI(TAG, "Message size: %d", strlen(message));
     err = send(sock, message, strlen(message), 0);
@@ -440,7 +445,7 @@ static void send_server(int sock, char* message){
 }
 
 //RECEIVE SERVER
-int receive_server(int sock, char* receive, int buf_size) {
+int receive_server_tcp(int sock, char* receive, int buf_size) {
     //Esperar Contraseña del servidor
     ESP_LOGI(TAG, "Waiting for data");
     int len = recv(sock, receive, buf_size - 1, 0);  // Usamos buf_size - 1 para dejar espacio para el terminador null
@@ -464,7 +469,7 @@ static void tcp_client(void *pvParameters)
 {
     char rx_buffer[128];
     char message[128];
-    char cifrado[128];
+    //char cifrado[128];
     char password[20];
     char *token;
 
@@ -474,31 +479,25 @@ static void tcp_client(void *pvParameters)
     sock = create_tcp_socket();
 
     // Enviar mensaje de login
-    send_server(sock, CONNECT);
+    send_server_tcp(sock, CONNECT);
 
     delayMs(100);
 
     //Esperar Contraseña del servidor
-    len = receive_server(sock, rx_buffer, sizeof(rx_buffer));  
+    //len = receive_server_tcp(sock, rx_buffer, sizeof(rx_buffer));  
     
     //Get password from server
-    get_password(password, rx_buffer);
-
-    /*
-    // Enviar mensaje de SMS
-    send_server(sock, SMS);
-    delayMs(100);
-    */
+    //get_password(password, rx_buffer);
 
     //Bucle de comunicacion
     while (1) {
         //Esperar Comando del servidor
-        len = receive_server(sock, rx_buffer, sizeof(rx_buffer));
+        len = receive_server_tcp(sock, rx_buffer, sizeof(rx_buffer));
 
         if(len > 0){
             //Descrifrar mensaje recibido
-            cifrar(cifrado, rx_buffer, len, password, strlen(password));
-            ESP_LOGI(TAG, "Receive cifrado: %s", cifrado);
+            //cifrar(cifrado, rx_buffer, len, password, strlen(password));
+            //ESP_LOGI(TAG, "Receive cifrado: %s", cifrado);
 
             // Initialize message with NACK
             strcpy(message, "NACK");
@@ -571,28 +570,29 @@ static void tcp_client(void *pvParameters)
                     }
                 }
                 // Cifrar mensaje
-                cifrar(cifrado, message, strlen(message), password, strlen(password));
+                //cifrar(cifrado, message, strlen(message), password, strlen(password));
 
                 // Enviar Mensaje
-                send_server(sock, cifrado);
+                send_server_tcp(sock, message);
             }
         }else if (_millis >= 10000) //Mandar keep alive si no hay mensaje.
         {
             ESP_LOGI(TAG, "Entre a keep alive\n");
             // Enviar mensaje Keep-Alive cada 10 segundos
-            cifrar(cifrado, KEEP_ALIVE, strlen(KEEP_ALIVE), password, strlen(password));
+            //cifrar(cifrado, KEEP_ALIVE, strlen(KEEP_ALIVE), password, strlen(password));
 
-            send_server(sock, cifrado);
+            send_server_tcp(sock, KEEP_ALIVE);
             _millis=0;
         }
 
         if (button_pressed)
         {
-            // Cifrar el mensaje antes de enviarlo
-            cifrar(cifrado, SMS, strlen(SMS), password, strlen(password));
+            ESP_LOGI(TAG,"Boton presionado");
+            //Cifrar el mensaje antes de enviarlo
+            //cifrar(cifrado, SMS, strlen(SMS), password, strlen(password));
 
-            // Enviar mensaje cifrado al servidor
-            send_server(sock, cifrado);
+            //Enviar mensaje cifrado al servidor
+            //send_server_tcp(sock, cifrado);
 
             button_pressed = false;
         }
@@ -688,6 +688,6 @@ void app_main(void)
         //Server UDP
         xTaskCreate(udp_server_task, "udp_server", 4096, (void*)AF_INET, 5, NULL);
 
-        while(1){}
+        while(1){delayMs(1);}
     }
 }

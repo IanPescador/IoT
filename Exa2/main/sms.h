@@ -48,7 +48,8 @@ uint32_t _millis=0;
 #define WIFI_CHANNEL    1
 
 #define HOST_IP_ADDR "82.180.173.228" //iot-uabc.site  
-#define PORT 8277                  
+#define PORT 8266  //Servidor Normal
+//#define PORT 8277  //Servidor Cifrado    
 
 bool led_state;
 #define LED1 GPIO_NUM_17 //LED NORMAL
