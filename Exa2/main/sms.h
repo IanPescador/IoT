@@ -34,7 +34,7 @@ bool button_pressed = false;
 char *TAG = "TCP_CLIENT";
 static const char *KEEP_ALIVE = "UABC:IPR:K:S:KeepAlive"; //Enviar cada 10 seg
 static const char *CONNECT = "UABC:IPR:L:S:LoginServer"; //Enviar al conectar
-static const char *SMS = "UABC:IPR:W:SMS:6641896966:SILKSONG"; //Enviar Mensaje SMS
+static const char *SMS = "UABC:IPR:M:S:6641896966:SILKSONG"; //Enviar Mensaje SMS
 
 #define WIFI_SSID       "WifiConfig"
 #define WIFI_PASS       "Password"

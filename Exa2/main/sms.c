@@ -247,11 +247,6 @@ void save_to_nvs(const char* key, const char* value) {
     nvs_close(nvs_handle);
 }
 
-//CREATE UDP SOCKET
-int create_udp_socket(){
-    return 1;
-}
-
 //UDP SERVER
 static void udp_server_task(void *pvParameters)
 {
@@ -446,7 +441,6 @@ static void send_server_tcp(int sock, char* message){
 
 //RECEIVE SERVER
 int receive_server_tcp(int sock, char* receive, int buf_size) {
-    //Esperar Contraseña del servidor
     ESP_LOGI(TAG, "Waiting for data");
     int len = recv(sock, receive, buf_size - 1, 0);  // Usamos buf_size - 1 para dejar espacio para el terminador null
     if (len < 0) {
@@ -575,6 +569,16 @@ static void tcp_client(void *pvParameters)
                 // Enviar Mensaje
                 send_server_tcp(sock, message);
             }
+        }else if (button_pressed)
+        {
+            ESP_LOGI(TAG, "Botón presionado, enviando mensaje al servidor");
+            //Cifrar el mensaje antes de enviarlo
+            //cifrar(cifrado, SMS, strlen(SMS), password, strlen(password));
+
+            //Enviar mensaje cifrado al servidor
+            send_server_tcp(sock, SMS);
+
+            button_pressed = false;
         }else if (_millis >= 10000) //Mandar keep alive si no hay mensaje.
         {
             ESP_LOGI(TAG, "Entre a keep alive\n");
@@ -584,19 +588,6 @@ static void tcp_client(void *pvParameters)
             send_server_tcp(sock, KEEP_ALIVE);
             _millis=0;
         }
-
-        if (button_pressed)
-        {
-            ESP_LOGI(TAG,"Boton presionado");
-            //Cifrar el mensaje antes de enviarlo
-            //cifrar(cifrado, SMS, strlen(SMS), password, strlen(password));
-
-            //Enviar mensaje cifrado al servidor
-            //send_server_tcp(sock, cifrado);
-
-            button_pressed = false;
-        }
-        
     }
 
     if (sock != -1) {
@@ -669,7 +660,7 @@ void app_main(void)
 
             // Detectar el flanco ascendente (transición de 1 a 0)
             if (!button_state && last_button_state) {
-                ESP_LOGI(TAG, "Botón presionado, enviando mensaje al servidor");
+                ESP_LOGI(TAG, "Botón presionado");
                 button_pressed = true;
             }
 
