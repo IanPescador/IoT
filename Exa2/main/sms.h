@@ -30,6 +30,7 @@
 
 bool config_complete = false;
 bool button_pressed = false;
+bool cooldown_message = false;
 
 char *TAG = "TCP_CLIENT";
 static const char *KEEP_ALIVE = "UABC:IPR:K:S:KeepAlive"; //Enviar cada 10 seg
@@ -43,7 +44,7 @@ static const char *SMS = "UABC:IPR:M:S:6641896966:SILKSONG"; //Enviar Mensaje SM
 // var for ssid, pass and dev
 size_t ssid_len, pass_len, dev_len;
 char w_ssid[32], w_pass[64], dev[32];
-uint32_t _millis=0;
+uint32_t _millis=0, _millisCooldown=0;
 
 #define WIFI_CHANNEL    1
 
@@ -54,7 +55,6 @@ uint32_t _millis=0;
 bool led_state;
 #define LED1 GPIO_NUM_17 //LED NORMAL
 #define BUTTON GPIO_NUM_25 // BOTON
-
 
 #define LEDC_TIMER              LEDC_TIMER_0
 #define LEDC_MODE               LEDC_LOW_SPEED_MODE

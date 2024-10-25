@@ -446,6 +446,7 @@ int receive_server_tcp(int sock, char* receive, int buf_size) {
     if (len < 0) {
         if(errno != EWOULDBLOCK){
             ESP_LOGE(TAG, "recv failed: errno %d", errno);
+            return -2;
         }else{
             ESP_LOGI(TAG, "Timeout");
         }
@@ -470,132 +471,138 @@ static void tcp_client(void *pvParameters)
     int sock;
     int len;
 
-    sock = create_tcp_socket();
+    while (1)
+    {
+        sock = create_tcp_socket();
 
-    // Enviar mensaje de login
-    send_server_tcp(sock, CONNECT);
+        // Enviar mensaje de login
+        send_server_tcp(sock, CONNECT);
 
-    delayMs(100);
+        delayMs(100);
 
-    //Esperar Contraseña del servidor
-    //len = receive_server_tcp(sock, rx_buffer, sizeof(rx_buffer));  
-    
-    //Get password from server
-    //get_password(password, rx_buffer);
+        //Esperar Contraseña del servidor
+        //len = receive_server_tcp(sock, rx_buffer, sizeof(rx_buffer));  
+        
+        //Get password from server
+        //get_password(password, rx_buffer);
 
-    //Bucle de comunicacion
-    while (1) {
-        //Esperar Comando del servidor
-        len = receive_server_tcp(sock, rx_buffer, sizeof(rx_buffer));
+        //Bucle de comunicacion
+        while (1) {
+            //Esperar Comando del servidor
+            len = receive_server_tcp(sock, rx_buffer, sizeof(rx_buffer));
 
-        if(len > 0){
-            //Descrifrar mensaje recibido
-            //cifrar(cifrado, rx_buffer, len, password, strlen(password));
-            //ESP_LOGI(TAG, "Receive cifrado: %s", cifrado);
+            if (len == -2)
+            {
+                ESP_LOGI(TAG, "Shutting down socket and reconnecting...");
+                shutdown(sock, 0);
+                close(sock);
+                
+                vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso antes de reconectar
+                break;
+            }else if(len > 0){
+                //Descrifrar mensaje recibido
+                //cifrar(cifrado, rx_buffer, len, password, strlen(password));
+                //ESP_LOGI(TAG, "Receive cifrado: %s", cifrado);
 
-            // Initialize message with NACK
-            strcpy(message, "NACK");
+                // Initialize message with NACK
+                strcpy(message, "NACK");
 
-            //First token verify with command uabc
-            token = strtok(rx_buffer, ":");
-            if (token != NULL && !strcmp(token,"UABC")){
-                token = strtok(NULL, ":");
-                if (token != NULL && !strcmp(token,"IPR")){
-                    token = strtok(NULL, ":");//Verify operation read or write
-                    if (token != NULL){
-                        if (!strcmp(token, "W")){ //Only led
-                            token = strtok(NULL, ":"); //Element
-                            if (token != NULL && !strcmp(token, "L")){ //Element is LED
-                                token = strtok(NULL, ":"); //Value
-                                if(token != NULL){
-                                    if (!strcmp(token, "1")){ //Turn on LED
-                                        led_state = true;
-                                        gpio_set_level(LED1, led_state);
+                //First token verify with command uabc
+                token = strtok(rx_buffer, ":");
+                if (token != NULL && !strcmp(token,"UABC")){
+                    token = strtok(NULL, ":");
+                    if (token != NULL && !strcmp(token,"IPR")){
+                        token = strtok(NULL, ":");//Verify operation read or write
+                        if (token != NULL){
+                            if (!strcmp(token, "W")){ //Only led
+                                token = strtok(NULL, ":"); //Element
+                                if (token != NULL && !strcmp(token, "L")){ //Element is LED
+                                    token = strtok(NULL, ":"); //Value
+                                    if(token != NULL){
+                                        if (!strcmp(token, "1")){ //Turn on LED
+                                            led_state = true;
+                                            gpio_set_level(LED1, led_state);
+                                            snprintf(message, sizeof(message), "ACK:%d", led_state);
+                                        }else if (!strcmp(token, "0")){ //Turn off LED
+                                            led_state = false;
+                                            gpio_set_level(LED1, led_state);
+                                            snprintf(message, sizeof(message), "ACK:%d", led_state);
+                                        }  
+                                    }   
+                                }else if (token != NULL && !strcmp(token, "P"))
+                                {
+                                    token = strtok(NULL, ":"); //Value
+                                    if(token != NULL){
+                                        if (!strcmp(token, "0"))
+                                        {
+                                            PWM = 0;
+                                            DUTY_VALUE = 0; //Valor en 0
+                                            // Establecer el nuevo valor de intensidad del LED
+                                            ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, DUTY_VALUE));
+                                            ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
+
+                                            snprintf(message, sizeof(message), "ACK:%d", PWM);
+                                        }else{
+                                            PWM = atoi(token);
+                                            DUTY_VALUE = LED_MAX_DUTY * PWM / 100; //Sacar porcentaje
+                                            // Establecer el nuevo valor de intensidad del LED
+                                            ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, DUTY_VALUE));
+                                            ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
+
+                                            snprintf(message, sizeof(message), "ACK:%d", PWM);
+                                        }
+                                    }
+                                }
+                            }else if(!strcmp(token, "R")){ //Led and ADC 
+                                token = strtok(NULL, ":"); //Element
+                                if (token != NULL){
+                                    if (!strcmp(token, "L")){ //Element is LED
                                         snprintf(message, sizeof(message), "ACK:%d", led_state);
-                                    }else if (!strcmp(token, "0")){ //Turn off LED
-                                        led_state = false;
-                                        gpio_set_level(LED1, led_state);
-                                        snprintf(message, sizeof(message), "ACK:%d", led_state);
-                                    }  
-                                }   
-                            }else if (token != NULL && !strcmp(token, "P"))
-                            {
-                                token = strtok(NULL, ":"); //Value
-                                if(token != NULL){
-                                    if (!strcmp(token, "0"))
-                                    {
-                                        PWM = 0;
-                                        DUTY_VALUE = 0; //Valor en 0
-                                        // Establecer el nuevo valor de intensidad del LED
-                                        ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, DUTY_VALUE));
-                                        ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
-
-                                        snprintf(message, sizeof(message), "ACK:%d", PWM);
-                                    }else{
-                                        PWM = atoi(token);
-                                        DUTY_VALUE = LED_MAX_DUTY * PWM / 100; //Sacar porcentaje
-                                        // Establecer el nuevo valor de intensidad del LED
-                                        ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, DUTY_VALUE));
-                                        ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
-
+                                    }else if (!strcmp(token, "A")){ //Element is ADC
+                                        snprintf(message, sizeof(message), "ACK:%d", ADC1_Ch0_Read_mV());
+                                    }else if (!strcmp(token, "P")){ //Element is PWM
                                         snprintf(message, sizeof(message), "ACK:%d", PWM);
                                     }
                                 }
-                            }
-                        }else if(!strcmp(token, "R")){ //Led and ADC 
-                            token = strtok(NULL, ":"); //Element
-                            if (token != NULL){
-                                if (!strcmp(token, "L")){ //Element is LED
-                                    snprintf(message, sizeof(message), "ACK:%d", led_state);
-                                }else if (!strcmp(token, "A")){ //Element is ADC
-                                    snprintf(message, sizeof(message), "ACK:%d", ADC1_Ch0_Read_mV());
-                                }else if (!strcmp(token, "P")){ //Element is PWM
-                                    snprintf(message, sizeof(message), "ACK:%d", PWM);
-                                }
-                            }
-                        }else if (!strcmp(token, "FACTORY")) //Reset Factory
-                        {
-                            ESP_ERROR_CHECK(nvs_flash_erase());
-                            ESP_ERROR_CHECK(nvs_flash_init());
+                            }else if (!strcmp(token, "FACTORY")) //Reset Factory
+                            {
+                                ESP_ERROR_CHECK(nvs_flash_erase());
+                                ESP_ERROR_CHECK(nvs_flash_init());
 
-                            ESP_LOGI(TAG, "NVS borrado exitosamente. Reiniciando el ESP32...");
-                            esp_restart();
-                        } 
+                                ESP_LOGI(TAG, "NVS borrado exitosamente. Reiniciando el ESP32...");
+                                esp_restart();
+                            } 
+                        }
                     }
+                    // Cifrar mensaje
+                    //cifrar(cifrado, message, strlen(message), password, strlen(password));
+
+                    // Enviar Mensaje
+                    send_server_tcp(sock, message);
                 }
-                // Cifrar mensaje
-                //cifrar(cifrado, message, strlen(message), password, strlen(password));
+            }else if (button_pressed)
+            {
+                ESP_LOGI(TAG, "Botón presionado, enviando mensaje al servidor");
+                //Cifrar el mensaje antes de enviarlo
+                //cifrar(cifrado, SMS, strlen(SMS), password, strlen(password));
 
-                // Enviar Mensaje
-                send_server_tcp(sock, message);
+                //Enviar mensaje cifrado al servidor
+                send_server_tcp(sock, SMS);
+
+                button_pressed = false;
+                cooldown_message = true;
+                _millisCooldown = 0;
+            }else if (_millis >= 10000) //Mandar keep alive si no hay mensaje.
+            {
+                ESP_LOGI(TAG, "Entre a keep alive\n");
+                // Enviar mensaje Keep-Alive cada 10 segundos
+                //cifrar(cifrado, KEEP_ALIVE, strlen(KEEP_ALIVE), password, strlen(password));
+
+                send_server_tcp(sock, KEEP_ALIVE);
+                _millis=0;
             }
-        }else if (button_pressed)
-        {
-            ESP_LOGI(TAG, "Botón presionado, enviando mensaje al servidor");
-            //Cifrar el mensaje antes de enviarlo
-            //cifrar(cifrado, SMS, strlen(SMS), password, strlen(password));
-
-            //Enviar mensaje cifrado al servidor
-            send_server_tcp(sock, SMS);
-
-            button_pressed = false;
-        }else if (_millis >= 10000) //Mandar keep alive si no hay mensaje.
-        {
-            ESP_LOGI(TAG, "Entre a keep alive\n");
-            // Enviar mensaje Keep-Alive cada 10 segundos
-            //cifrar(cifrado, KEEP_ALIVE, strlen(KEEP_ALIVE), password, strlen(password));
-
-            send_server_tcp(sock, KEEP_ALIVE);
-            _millis=0;
         }
     }
-
-    if (sock != -1) {
-        ESP_LOGI(TAG, "Shutting down socket and reconnecting...");
-        shutdown(sock, 0);
-        close(sock);
-    }
-    vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso antes de reconectar
     
     // Eliminar la tarea antes de retornar
     vTaskDelete(NULL);
@@ -658,8 +665,8 @@ void app_main(void)
             // Leer el estado actual del botón
             button_state = gpio_get_level(BUTTON);
 
-            // Detectar el flanco ascendente (transición de 1 a 0)
-            if (!button_state && last_button_state) {
+            // Detectar el flanco ascendente (transición de 0 a 1)
+            if (!button_state && last_button_state && !cooldown_message) {
                 ESP_LOGI(TAG, "Botón presionado");
                 button_pressed = true;
             }
@@ -668,6 +675,11 @@ void app_main(void)
             last_button_state = button_state;
 
             _millis++;
+            if (cooldown_message)
+                _millisCooldown++;
+            if (cooldown_message && _millisCooldown > 1000 * 60)
+                cooldown_message = false;
+
             delayMs(1);
         }
     }else{
