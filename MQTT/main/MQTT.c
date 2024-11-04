@@ -88,8 +88,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         msg_id = esp_mqtt_client_publish(client, "test/topic", "Hola desde ESP32", 0, 1, 0);
         ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
 
-        msg_id = esp_mqtt_client_subscribe(client, "test/topic", 0);
-        ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+        //msg_id = esp_mqtt_client_subscribe(client, "test/topic", 0);
+        //ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
 
         //msg_id = esp_mqtt_client_unsubscribe(client, "test/topic");
         //ESP_LOGI(TAG, "sent unsubscribe successful, msg_id=%d", msg_id);
@@ -133,6 +133,8 @@ static void mqtt_app_start(void)
 {
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = CONFIG_BROKER_URL,
+        .credentials.username = USERNAME,
+        .credentials.authentication.password = PASSWORD,
     };
 
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);

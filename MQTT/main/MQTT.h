@@ -28,3 +28,5 @@ static const char *TAG = "mqtt_example";
 #define WIFI_CHANNEL    1
 
 #define CONFIG_BROKER_URL "mqtt://192.168.4.87:1883"
+#define USERNAME "mqtt"
+#define PASSWORD "mqtt"

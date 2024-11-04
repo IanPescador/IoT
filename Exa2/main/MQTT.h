@@ -27,6 +27,7 @@
 #include "lwip/sys.h"
 #include "driver/ledc.h"
 #include <lwip/netdb.h>
+#include "mqtt_client.h"
 
 bool config_complete = false;
 bool button_pressed = false;
@@ -36,6 +37,11 @@ char *TAG = "TCP_CLIENT";
 static const char *KEEP_ALIVE = "UABC:IPR:K:S:KeepAlive"; //Enviar cada 10 seg
 static const char *CONNECT = "UABC:IPR:L:S:LoginServer"; //Enviar al conectar
 static const char *SMS = "UABC:IPR:M:S:6641896966:SILKSONG"; //Enviar Mensaje SMS
+
+#define CONFIG_BROKER_URL "mqtt://iot-uabc.site:1883"
+#define USERNAME "mqtt"
+#define PASSWORD "mqtt"
+esp_mqtt_client_handle_t mqtt_client = NULL;
 
 #define WIFI_SSID       "WifiConfig"
 #define WIFI_PASS       "Password"

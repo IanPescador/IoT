@@ -1,2 +1,2 @@
-idf_component_register(SRCS "sms.c"
+idf_component_register(SRCS "MQTT.c"
                     INCLUDE_DIRS ".")

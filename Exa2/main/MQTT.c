@@ -1,4 +1,4 @@
-#include "sms.h"
+#include "MQTT.h"
 
 // Delay ms
 static void delayMs(uint16_t ms)
@@ -383,6 +383,72 @@ static void udp_server_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
+static void log_error_if_nonzero(const char *message, int error_code)
+{
+    if (error_code != 0) {
+        ESP_LOGE(TAG, "Last error %s: 0x%x", message, error_code);
+    }
+}
+
+//MQTT HANDLER EVENT
+static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
+{
+    ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32 "", base, event_id);
+    esp_mqtt_event_handle_t event = event_data;
+    esp_mqtt_client_handle_t client = event->client;
+    int msg_id;
+    switch ((esp_mqtt_event_id_t)event_id) {
+    case MQTT_EVENT_CONNECTED:
+        ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+        break;
+    case MQTT_EVENT_DISCONNECTED:
+        ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+        break;
+    case MQTT_EVENT_SUBSCRIBED:
+        ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
+        break;
+    case MQTT_EVENT_UNSUBSCRIBED:
+        ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
+        break;
+    case MQTT_EVENT_PUBLISHED:
+        ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
+        break;
+    case MQTT_EVENT_DATA:
+        ESP_LOGI(TAG, "MQTT_EVENT_DATA");
+        printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
+        printf("DATA=%.*s\r\n", event->data_len, event->data);
+        break;
+    case MQTT_EVENT_ERROR:
+        ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
+        if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
+            log_error_if_nonzero("reported from esp-tls", event->error_handle->esp_tls_last_esp_err);
+            log_error_if_nonzero("reported from tls stack", event->error_handle->esp_tls_stack_err);
+            log_error_if_nonzero("captured as transport's socket errno",  event->error_handle->esp_transport_sock_errno);
+            ESP_LOGI(TAG, "Last errno string (%s)", strerror(event->error_handle->esp_transport_sock_errno));
+
+        }
+        break;
+    default:
+        ESP_LOGI(TAG, "Other event id:%d", event->event_id);
+        break;
+    }
+}
+
+//MQTT START
+static void mqtt_app_start(void)
+{
+    esp_mqtt_client_config_t mqtt_cfg = {
+        .broker.address.uri = CONFIG_BROKER_URL,
+        .credentials.username = USERNAME,
+        .credentials.authentication.password = PASSWORD,
+    };
+
+    mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
+    /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
+    esp_mqtt_client_register_event(mqtt_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
+    esp_mqtt_client_start(mqtt_client);
+}
+
 //CREATE TCP SOCKET
 int create_tcp_socket(){
     int sock, err;
@@ -464,12 +530,14 @@ static void tcp_client(void *pvParameters)
 {
     char rx_buffer[128];
     char message[128];
+    char mqtt_message[128];
     //char cifrado[128];
     char password[20];
     char *token;
 
     int sock;
     int len;
+    int msg_id;
 
     while (1)
     {
@@ -527,7 +595,10 @@ static void tcp_client(void *pvParameters)
                                             led_state = false;
                                             gpio_set_level(LED1, led_state);
                                             snprintf(message, sizeof(message), "ACK:%d", led_state);
-                                        }  
+                                        }
+                                        snprintf(mqtt_message, sizeof(mqtt_message), "%d:IPR", led_state);
+                                        msg_id = esp_mqtt_client_publish(mqtt_client, "device/led", mqtt_message, 0, 1, 0);
+                                        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
                                     }   
                                 }else if (token != NULL && !strcmp(token, "P"))
                                 {
@@ -558,6 +629,10 @@ static void tcp_client(void *pvParameters)
                                 if (token != NULL){
                                     if (!strcmp(token, "L")){ //Element is LED
                                         snprintf(message, sizeof(message), "ACK:%d", led_state);
+
+                                        snprintf(mqtt_message, sizeof(mqtt_message), "%d:IPR", led_state);
+                                        msg_id = esp_mqtt_client_publish(mqtt_client, "device/led", mqtt_message, 0, 1, 0);
+                                        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
                                     }else if (!strcmp(token, "A")){ //Element is ADC
                                         snprintf(message, sizeof(message), "ACK:%d", ADC1_Ch0_Read_mV());
                                     }else if (!strcmp(token, "P")){ //Element is PWM
@@ -594,7 +669,6 @@ static void tcp_client(void *pvParameters)
                 _millisCooldown = 0;
             }else if (_millis >= 10000) //Mandar keep alive si no hay mensaje.
             {
-                ESP_LOGI(TAG, "Entre a keep alive\n");
                 // Enviar mensaje Keep-Alive cada 10 segundos
                 //cifrar(cifrado, KEEP_ALIVE, strlen(KEEP_ALIVE), password, strlen(password));
 
@@ -653,6 +727,9 @@ void app_main(void)
 
         //Init wifi sta
         wifi_connection_sta();
+
+        //Init MQTT
+        mqtt_app_start();
 
         //CLIENT TCP
         xTaskCreate(tcp_client, "tcp_client", 4096, (void*)AF_INET, 5, NULL); 
