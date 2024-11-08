@@ -348,6 +348,15 @@ static void udp_server_task(void *pvParameters)
                                 //Send device name with ack
                                 snprintf(message, sizeof(message), "ACK:%s", dev);
                             }
+                        }else if (token != NULL && !strcmp(token, "USER")){ //Element is USER
+                            token = strtok(NULL, ":"); //Value
+                            if(token != NULL){
+                                strcpy(user, token);
+                                //SAVE IN NVS
+                                save_to_nvs("USER", user);
+                                //Send device name with ack
+                                snprintf(message, sizeof(message), "ACK:%s", user);
+                            }
                         }
                     }else if(!strcmp(token, "R")){  
                         token = strtok(NULL, ":"); //Element
@@ -358,6 +367,8 @@ static void udp_server_task(void *pvParameters)
                                 snprintf(message, sizeof(message), "ACK:%s", w_pass);
                             }else if (!strcmp(token, "DEV")){ //Element is dev
                                 snprintf(message, sizeof(message), "ACK:%s", dev);
+                            }else if (!strcmp(token, "USER")){ //Element is user
+                                snprintf(message, sizeof(message), "ACK:%s", user);
                             }
                         }
                     }else if(!strcmp(token, "RESET")){  
@@ -579,74 +590,77 @@ static void tcp_client(void *pvParameters)
                 token = strtok(rx_buffer, ":");
                 if (token != NULL && !strcmp(token,"UABC")){
                     token = strtok(NULL, ":");
-                    if (token != NULL && !strcmp(token,"IPR")){
-                        token = strtok(NULL, ":");//Verify operation read or write
-                        if (token != NULL){
-                            if (!strcmp(token, "W")){ //Only led
-                                token = strtok(NULL, ":"); //Element
-                                if (token != NULL && !strcmp(token, "L")){ //Element is LED
-                                    token = strtok(NULL, ":"); //Value
-                                    if(token != NULL){
-                                        if (!strcmp(token, "1")){ //Turn on LED
-                                            led_state = true;
-                                            gpio_set_level(LED1, led_state);
-                                            snprintf(message, sizeof(message), "ACK:%d", led_state);
-                                        }else if (!strcmp(token, "0")){ //Turn off LED
-                                            led_state = false;
-                                            gpio_set_level(LED1, led_state);
-                                            snprintf(message, sizeof(message), "ACK:%d", led_state);
+                    if (token != NULL && !strcmp(token,user)){
+                        token = strtok(NULL, ":");
+                        if (token != NULL && !strcmp(token,dev)){
+                            token = strtok(NULL, ":");//Verify operation read or write
+                            if (token != NULL){
+                                if (!strcmp(token, "W")){ //Only led
+                                    token = strtok(NULL, ":"); //Element
+                                    if (token != NULL && !strcmp(token, "L")){ //Element is LED
+                                        token = strtok(NULL, ":"); //Value
+                                        if(token != NULL){
+                                            if (!strcmp(token, "1")){ //Turn on LED
+                                                led_state = true;
+                                                gpio_set_level(LED1, led_state);
+                                                snprintf(message, sizeof(message), "ACK:%d", led_state);
+                                            }else if (!strcmp(token, "0")){ //Turn off LED
+                                                led_state = false;
+                                                gpio_set_level(LED1, led_state);
+                                                snprintf(message, sizeof(message), "ACK:%d", led_state);
+                                            }
+                                            snprintf(mqtt_message, sizeof(mqtt_message), "%d:IPR", led_state);
+                                            msg_id = esp_mqtt_client_publish(mqtt_client, "device/led", mqtt_message, 0, 1, 0);
+                                            ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+                                        }   
+                                    }else if (token != NULL && !strcmp(token, "P"))
+                                    {
+                                        token = strtok(NULL, ":"); //Value
+                                        if(token != NULL){
+                                            if (!strcmp(token, "0"))
+                                            {
+                                                PWM = 0;
+                                                DUTY_VALUE = 0; //Valor en 0
+                                                // Establecer el nuevo valor de intensidad del LED
+                                                ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, DUTY_VALUE));
+                                                ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
+
+                                                snprintf(message, sizeof(message), "ACK:%d", PWM);
+                                            }else{
+                                                PWM = atoi(token);
+                                                DUTY_VALUE = LED_MAX_DUTY * PWM / 100; //Sacar porcentaje
+                                                // Establecer el nuevo valor de intensidad del LED
+                                                ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, DUTY_VALUE));
+                                                ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
+
+                                                snprintf(message, sizeof(message), "ACK:%d", PWM);
+                                            }
                                         }
-                                        snprintf(mqtt_message, sizeof(mqtt_message), "%d:IPR", led_state);
-                                        msg_id = esp_mqtt_client_publish(mqtt_client, "device/led", mqtt_message, 0, 1, 0);
-                                        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-                                    }   
-                                }else if (token != NULL && !strcmp(token, "P"))
+                                    }
+                                }else if(!strcmp(token, "R")){ //Led and ADC 
+                                    token = strtok(NULL, ":"); //Element
+                                    if (token != NULL){
+                                        if (!strcmp(token, "L")){ //Element is LED
+                                            snprintf(message, sizeof(message), "ACK:%d", led_state);
+
+                                            snprintf(mqtt_message, sizeof(mqtt_message), "%d:IPR", led_state);
+                                            msg_id = esp_mqtt_client_publish(mqtt_client, "device/led", mqtt_message, 0, 1, 0);
+                                            ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+                                        }else if (!strcmp(token, "A")){ //Element is ADC
+                                            snprintf(message, sizeof(message), "ACK:%d", ADC1_Ch0_Read_mV());
+                                        }else if (!strcmp(token, "P")){ //Element is PWM
+                                            snprintf(message, sizeof(message), "ACK:%d", PWM);
+                                        }
+                                    }
+                                }else if (!strcmp(token, "FACTORY")) //Reset Factory
                                 {
-                                    token = strtok(NULL, ":"); //Value
-                                    if(token != NULL){
-                                        if (!strcmp(token, "0"))
-                                        {
-                                            PWM = 0;
-                                            DUTY_VALUE = 0; //Valor en 0
-                                            // Establecer el nuevo valor de intensidad del LED
-                                            ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, DUTY_VALUE));
-                                            ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
+                                    ESP_ERROR_CHECK(nvs_flash_erase());
+                                    ESP_ERROR_CHECK(nvs_flash_init());
 
-                                            snprintf(message, sizeof(message), "ACK:%d", PWM);
-                                        }else{
-                                            PWM = atoi(token);
-                                            DUTY_VALUE = LED_MAX_DUTY * PWM / 100; //Sacar porcentaje
-                                            // Establecer el nuevo valor de intensidad del LED
-                                            ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, DUTY_VALUE));
-                                            ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
-
-                                            snprintf(message, sizeof(message), "ACK:%d", PWM);
-                                        }
-                                    }
-                                }
-                            }else if(!strcmp(token, "R")){ //Led and ADC 
-                                token = strtok(NULL, ":"); //Element
-                                if (token != NULL){
-                                    if (!strcmp(token, "L")){ //Element is LED
-                                        snprintf(message, sizeof(message), "ACK:%d", led_state);
-
-                                        snprintf(mqtt_message, sizeof(mqtt_message), "%d:IPR", led_state);
-                                        msg_id = esp_mqtt_client_publish(mqtt_client, "device/led", mqtt_message, 0, 1, 0);
-                                        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-                                    }else if (!strcmp(token, "A")){ //Element is ADC
-                                        snprintf(message, sizeof(message), "ACK:%d", ADC1_Ch0_Read_mV());
-                                    }else if (!strcmp(token, "P")){ //Element is PWM
-                                        snprintf(message, sizeof(message), "ACK:%d", PWM);
-                                    }
-                                }
-                            }else if (!strcmp(token, "FACTORY")) //Reset Factory
-                            {
-                                ESP_ERROR_CHECK(nvs_flash_erase());
-                                ESP_ERROR_CHECK(nvs_flash_init());
-
-                                ESP_LOGI(TAG, "NVS borrado exitosamente. Reiniciando el ESP32...");
-                                esp_restart();
-                            } 
+                                    ESP_LOGI(TAG, "NVS borrado exitosamente. Reiniciando el ESP32...");
+                                    esp_restart();
+                                } 
+                            }
                         }
                     }
                     // Cifrar mensaje
@@ -707,9 +721,13 @@ void app_main(void)
     ret = nvs_get_str(nvs_handle, "DEV", NULL, &dev_len);
     if (ret == ESP_OK) 
         nvs_get_str(nvs_handle, "DEV", dev, &dev_len);
+    
+    ret = nvs_get_str(nvs_handle, "USER", NULL, &user_len);
+    if (ret == ESP_OK) 
+        nvs_get_str(nvs_handle, "USER", user, &user_len);
 
     // varify all var exist
-    if (ssid_len > 0 && pass_len > 0 && dev_len > 0) {
+    if (ssid_len > 0 && pass_len > 0 && dev_len > 0 && user_len > 0) {
         config_complete = true;
     } else {
         config_complete = false;
@@ -724,6 +742,11 @@ void app_main(void)
 
         //Inicializacion de GPIOs y ADC
         InitIO();
+
+        //Init comandos staticos
+        snprintf(KEEP_ALIVE, sizeof(KEEP_ALIVE), "UABC:%s:%s:K:S:KeepAlive", user, dev);
+        snprintf(CONNECT, sizeof(CONNECT), "UABC:%s:%s:L:S:LoginServer", user, dev);
+        snprintf(SMS, sizeof(SMS), "UABC:%s:%s:M:S:6641896966:SILKSONG", user, dev);     
 
         //Init wifi sta
         wifi_connection_sta();

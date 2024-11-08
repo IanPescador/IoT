@@ -34,9 +34,9 @@ bool button_pressed = false;
 bool cooldown_message = false;
 
 char *TAG = "TCP_CLIENT";
-static const char *KEEP_ALIVE = "UABC:IPR:K:S:KeepAlive"; //Enviar cada 10 seg
-static const char *CONNECT = "UABC:IPR:L:S:LoginServer"; //Enviar al conectar
-static const char *SMS = "UABC:IPR:M:S:6641896966:SILKSONG"; //Enviar Mensaje SMS
+char KEEP_ALIVE[32]; //Enviar cada 10 seg
+char CONNECT[32]; //Enviar al conectar
+char SMS[64]; //Enviar Mensaje SMS
 
 #define CONFIG_BROKER_URL "mqtt://iot-uabc.site:1883"
 #define USERNAME "mqtt"
@@ -48,8 +48,8 @@ esp_mqtt_client_handle_t mqtt_client = NULL;
 #define MAX_STA_CONN    10
 
 // var for ssid, pass and dev
-size_t ssid_len, pass_len, dev_len;
-char w_ssid[32], w_pass[64], dev[32];
+size_t ssid_len, pass_len, dev_len, user_len;
+char w_ssid[32], w_pass[64], dev[2], user[4];
 uint32_t _millis=0, _millisCooldown=0;
 
 #define WIFI_CHANNEL    1
