@@ -572,11 +572,11 @@ void app_main(void)
     if (ret == ESP_OK) 
         nvs_get_str(nvs_handle, "USER", user, &user_len);
 
-    printf("SSID: %s    PASS: %s    DEV: %s    USER: %s\n",w_ssid, w_pass, dev, user);
-    printf("LEN SSID: %d    PASS: %d    DEV: %d    USER: %d\n",ssid_len, pass_len, dev_len, user_len);
+    //printf("SSID: %s    PASS: %s    DEV: %s    USER: %s\n",w_ssid, w_pass, dev, user);
+    //printf("LEN SSID: %d    PASS: %d    DEV: %d    USER: %d\n",ssid_len, pass_len, dev_len, user_len);
 
     // varify all var exist
-    if (ssid_len > 1 && pass_len > 1 && dev_len > 1 && user_len > 1) {
+    if (ssid_len > 0 && pass_len > 0 && dev_len > 0 && user_len > 0) {
         config_complete = true;
     } else {
         config_complete = false;
