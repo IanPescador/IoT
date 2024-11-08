@@ -248,153 +248,6 @@ void save_to_nvs(const char* key, const char* value) {
     nvs_close(nvs_handle);
 }
 
-//UDP SERVER
-static void udp_server_task(void *pvParameters)
-{
-    char rx_buffer[128];
-    char message[128];
-    char addr_str[128];
-    int addr_family = (int)pvParameters;
-    int ip_protocol = 0;
-    struct sockaddr_in dest_addr;
-    char *token;
-
-    if (addr_family != AF_INET) {
-        ESP_LOGE(TAG, "Invalid address family, must be AF_INET");
-        vTaskDelete(NULL);
-    }
-
-    dest_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    dest_addr.sin_family = AF_INET;
-    dest_addr.sin_port = htons(PORT);
-    ip_protocol = IPPROTO_IP;
-
-    while (1) {
-        int sock = socket(addr_family, SOCK_DGRAM, ip_protocol);
-        if (sock < 0) {
-            ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
-            break;
-        }
-        ESP_LOGI(TAG, "Socket created");
-
-        // Set timeout
-        struct timeval timeout;
-        timeout.tv_sec = 10;
-        timeout.tv_usec = 0;
-        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
-
-        int err = bind(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-        if (err < 0) {
-            ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
-        }
-        ESP_LOGI(TAG, "Socket bound, port %d", PORT);
-
-        struct sockaddr_storage source_addr; // Large enough for both IPv4 or IPv6
-        socklen_t socklen = sizeof(source_addr);
-
-        while (1) {
-            ESP_LOGI(TAG, "Waiting for data");
-            int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0, (struct sockaddr *)&source_addr, &socklen);
-            // Error occurred during receiving
-            if (len < 0) {
-                ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
-                break;
-            }
-
-            // Data received
-            // Get the sender's ip address as string
-            if (source_addr.ss_family == AF_INET) {
-                inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, addr_str, sizeof(addr_str) - 1);
-            }
-
-            rx_buffer[len] = 0; // Null-terminate whatever we received and treat like a string...
-            ESP_LOGI(TAG, "Received %d bytes from %s:", len, addr_str);
-            ESP_LOGI(TAG, "%s", rx_buffer);
-
-            // Initialize message with NACK
-            strcpy(message, "NACK");
-            
-            //CONFIG RESPONSE
-            //First token verify with command uabc
-            token = strtok(rx_buffer, ":");
-            if (token != NULL && !strcmp(token,"UABC")){
-                token = strtok(NULL, ":");//Verify operation read or write
-                if (token != NULL){
-                    if (!strcmp(token, "W")){ 
-                        token = strtok(NULL, ":"); //Element
-                        if (token != NULL && !strcmp(token, "WIFI")){ //Element is WIFI or SSID
-                            token = strtok(NULL, ":"); //Value
-                            if(token != NULL){
-                                strcpy(w_ssid, token);
-                                //SAVE IN NVS
-                                save_to_nvs("SSID", w_ssid);
-                                //Send ssid with ack
-                                snprintf(message, sizeof(message), "ACK:%s", token);
-                            }   
-                        }else if (token != NULL && !strcmp(token, "PASS")){ //Element is PASS
-                            token = strtok(NULL, ":"); //Value
-                            if(token != NULL){
-                                strcpy(w_pass, token);
-                                //SAVE IN NVS
-                                save_to_nvs("PASS", w_pass);
-                                //Send password with ack
-                                snprintf(message, sizeof(message), "ACK:%s", w_pass);
-                            }
-                        }else if (token != NULL && !strcmp(token, "DEV")){ //Element is DEV
-                            token = strtok(NULL, ":"); //Value
-                            if(token != NULL){
-                                strcpy(dev, token);
-                                //SAVE IN NVS
-                                save_to_nvs("DEV", dev);
-                                //Send device name with ack
-                                snprintf(message, sizeof(message), "ACK:%s", dev);
-                            }
-                        }else if (token != NULL && !strcmp(token, "USER")){ //Element is USER
-                            token = strtok(NULL, ":"); //Value
-                            if(token != NULL){
-                                strcpy(user, token);
-                                //SAVE IN NVS
-                                save_to_nvs("USER", user);
-                                //Send device name with ack
-                                snprintf(message, sizeof(message), "ACK:%s", user);
-                            }
-                        }
-                    }else if(!strcmp(token, "R")){  
-                        token = strtok(NULL, ":"); //Element
-                        if (token != NULL){
-                            if (!strcmp(token, "WIFI")){ //Element is WIFI
-                                snprintf(message, sizeof(message), "ACK:%s", w_ssid);
-                            }else if (!strcmp(token, "PASS")){ //Element is PASS
-                                snprintf(message, sizeof(message), "ACK:%s", w_pass);
-                            }else if (!strcmp(token, "DEV")){ //Element is dev
-                                snprintf(message, sizeof(message), "ACK:%s", dev);
-                            }else if (!strcmp(token, "USER")){ //Element is user
-                                snprintf(message, sizeof(message), "ACK:%s", user);
-                            }
-                        }
-                    }else if(!strcmp(token, "RESET")){  
-                        // restart ESP32
-                        esp_restart();
-                    }
-                } 
-            }
-            
-            int err = sendto(sock, message, strlen(message), 0, (struct sockaddr *)&source_addr, sizeof(source_addr));
-            if (err < 0) 
-            {
-                ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-                break;
-            }
-        }
-        if (sock != -1) {
-            ESP_LOGE(TAG, "Shutting down socket and restarting...");
-            shutdown(sock, 0);
-            close(sock);
-        }
-    }
-    vTaskDelete(NULL);
-}
-
 static void log_error_if_nonzero(const char *message, int error_code)
 {
     if (error_code != 0) {
@@ -653,14 +506,7 @@ static void tcp_client(void *pvParameters)
                                             snprintf(message, sizeof(message), "ACK:%d", PWM);
                                         }
                                     }
-                                }else if (!strcmp(token, "FACTORY")) //Reset Factory
-                                {
-                                    ESP_ERROR_CHECK(nvs_flash_erase());
-                                    ESP_ERROR_CHECK(nvs_flash_init());
-
-                                    ESP_LOGI(TAG, "NVS borrado exitosamente. Reiniciando el ESP32...");
-                                    esp_restart();
-                                } 
+                                }
                             }
                         }
                     }
@@ -692,7 +538,6 @@ static void tcp_client(void *pvParameters)
             }
         }
     }
-    
     // Eliminar la tarea antes de retornar
     vTaskDelete(NULL);
 }
@@ -727,8 +572,11 @@ void app_main(void)
     if (ret == ESP_OK) 
         nvs_get_str(nvs_handle, "USER", user, &user_len);
 
+    printf("SSID: %s    PASS: %s    DEV: %s    USER: %s\n",w_ssid, w_pass, dev, user);
+    printf("LEN SSID: %d    PASS: %d    DEV: %d    USER: %d\n",ssid_len, pass_len, dev_len, user_len);
+
     // varify all var exist
-    if (ssid_len > 0 && pass_len > 0 && dev_len > 0 && user_len > 0) {
+    if (ssid_len > 1 && pass_len > 1 && dev_len > 1 && user_len > 1) {
         config_complete = true;
     } else {
         config_complete = false;
@@ -790,11 +638,22 @@ void app_main(void)
         wifi_init_softap();
 
         // Start the web server
-        httpd_handle_t server = start_webserver();
+        httpd_handle_t server = start_web_server();
 
-        //Server UDP
-        xTaskCreate(udp_server_task, "udp_server", 4096, (void*)AF_INET, 5, NULL);
+        while(1){
+            if (strlen(device_config.device_name) > 0 && strlen(device_config.username) > 0 && strlen(device_config.wifi_name) > 0 && strlen(device_config.wifi_password) > 0)
+            {
+                //SAVE IN NVS
+                save_to_nvs("SSID", device_config.wifi_name);
+                save_to_nvs("PASS", device_config.wifi_password);
+                save_to_nvs("DEV", device_config.device_name);
+                save_to_nvs("USER", device_config.username);
 
-        while(1){delayMs(1);}
+                delayMs(1000);
+
+                esp_restart();
+            }
+            delayMs(1);
+        }
     }
 }
