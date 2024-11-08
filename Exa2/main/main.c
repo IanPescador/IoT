@@ -1,4 +1,5 @@
-#include "MQTT.h"
+#include "main.h"
+#include "web_server.h"
 
 // Delay ms
 static void delayMs(uint16_t ms)
@@ -787,6 +788,9 @@ void app_main(void)
         ESP_LOGI(TAG, "Variables no encontradas, ejecutando el código de configuracion.");
         ESP_LOGI(TAG, "ESP_WIFI_MODE_AP");
         wifi_init_softap();
+
+        // Start the web server
+        httpd_handle_t server = start_webserver();
 
         //Server UDP
         xTaskCreate(udp_server_task, "udp_server", 4096, (void*)AF_INET, 5, NULL);
