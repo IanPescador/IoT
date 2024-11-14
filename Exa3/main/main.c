@@ -506,14 +506,7 @@ static void tcp_client(void *pvParameters)
                                             snprintf(message, sizeof(message), "ACK:%d", PWM);
                                         }
                                     }
-                                }else if (!strcmp(token, "FACTORY")) //Reset Factory
-                                {
-                                    ESP_ERROR_CHECK(nvs_flash_erase());
-                                    ESP_ERROR_CHECK(nvs_flash_init());
-
-                                    ESP_LOGI(TAG, "NVS borrado exitosamente. Reiniciando el ESP32...");
-                                    esp_restart();
-                                } 
+                                }
                             }
                         }
                     }
@@ -545,7 +538,6 @@ static void tcp_client(void *pvParameters)
             }
         }
     }
-    
     // Eliminar la tarea antes de retornar
     vTaskDelete(NULL);
 }
@@ -579,6 +571,9 @@ void app_main(void)
     ret = nvs_get_str(nvs_handle, "USER", NULL, &user_len);
     if (ret == ESP_OK) 
         nvs_get_str(nvs_handle, "USER", user, &user_len);
+
+    //printf("SSID: %s    PASS: %s    DEV: %s    USER: %s\n",w_ssid, w_pass, dev, user);
+    //printf("LEN SSID: %d    PASS: %d    DEV: %d    USER: %d\n",ssid_len, pass_len, dev_len, user_len);
 
     // varify all var exist
     if (ssid_len > 0 && pass_len > 0 && dev_len > 0 && user_len > 0) {
@@ -643,8 +638,22 @@ void app_main(void)
         wifi_init_softap();
 
         // Start the web server
-        httpd_handle_t server = start_webserver();
+        httpd_handle_t server = start_web_server();
 
-        while(1){delayMs(1);}
+        while(1){
+            if (strlen(device_config.device_name) > 0 && strlen(device_config.username) > 0 && strlen(device_config.wifi_name) > 0 && strlen(device_config.wifi_password) > 0)
+            {
+                //SAVE IN NVS
+                save_to_nvs("SSID", device_config.wifi_name);
+                save_to_nvs("PASS", device_config.wifi_password);
+                save_to_nvs("DEV", device_config.device_name);
+                save_to_nvs("USER", device_config.username);
+
+                delayMs(1000);
+
+                esp_restart();
+            }
+            delayMs(1);
+        }
     }
 }
