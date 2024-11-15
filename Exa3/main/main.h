@@ -32,6 +32,7 @@
 bool config_complete = false;
 bool button_pressed = false;
 bool cooldown_message = false;
+bool internet = false;
 
 char *TAG = "TCP_CLIENT";
 char KEEP_ALIVE[32]; //Enviar cada 10 seg
@@ -55,6 +56,7 @@ uint32_t _millis=0, _millisCooldown=0;
 #define WIFI_CHANNEL    1
 
 #define HOST_IP_ADDR "82.180.173.228" //iot-uabc.site  
+#define ALTERNATIVE_IP "192.168.140.230" //SERVIDOR ALTERNATIVO
 #define PORT 8266  //Servidor Normal
 //#define PORT 8277  //Servidor Cifrado    
 

@@ -120,11 +120,16 @@ void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id
     } else if (event_id == WIFI_EVENT_STA_CONNECTED) 
     {
         ESP_LOGI(TAG, "Connected to the master's Wi-Fi network");
+        internet = true;
+        printf("Internet connected: %d\n", internet);
     } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) 
     {
         wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
         ESP_LOGE(TAG, "Disconnected from the master's Wi-Fi network, reason: %d", event->reason);
+        internet = false;
+        printf("Internet not connected: %d\n", internet);
         esp_wifi_connect();
+
     } else if (event_id == IP_EVENT_STA_GOT_IP) 
     {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*)event_data;
@@ -315,7 +320,7 @@ static void mqtt_app_start(void)
 }
 
 //CREATE TCP SOCKET
-int create_tcp_socket(){
+int create_tcp_socket(char* IP){
     int sock, err;
 
     int addr_family = AF_INET;
@@ -323,7 +328,7 @@ int create_tcp_socket(){
 
     // Configuración de la dirección del servidor
     struct sockaddr_in dest_addr;
-    dest_addr.sin_addr.s_addr = inet_addr(HOST_IP_ADDR);
+    dest_addr.sin_addr.s_addr = inet_addr(IP);
     dest_addr.sin_family = AF_INET;
     dest_addr.sin_port = htons(PORT);
     ip_protocol = IPPROTO_IP;
@@ -337,7 +342,7 @@ int create_tcp_socket(){
             vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso antes de reintentar
             continue; // Reintentar creación de socket
         }
-        ESP_LOGI(TAG, "Socket created, connecting to %s:%d", HOST_IP_ADDR, PORT);
+        ESP_LOGI(TAG, "Socket created, connecting to %s:%d", IP, PORT);
 
         err = connect(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
         if (err == 0) {
@@ -406,8 +411,12 @@ static void tcp_client(void *pvParameters)
 
     while (1)
     {
-        sock = create_tcp_socket();
-
+        if(internet){
+            sock = create_tcp_socket(HOST_IP_ADDR);
+        }else{
+            sock = create_tcp_socket(ALTERNATIVE_IP);
+        }
+        
         // Enviar mensaje de login
         send_server_tcp(sock, CONNECT);
 
@@ -599,6 +608,8 @@ void app_main(void)
 
         //Init wifi sta
         wifi_connection_sta();
+
+        delayMs(5000);
 
         //Init MQTT
         mqtt_app_start();
