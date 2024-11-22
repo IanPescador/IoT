@@ -110,23 +110,63 @@ static void InitIO(void){
     ledc_init();
 }
 
+// HTTP Handler
+esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
+    switch(evt->event_id) {
+        case HTTP_EVENT_ON_DATA:
+            // Si se reciben menos datos que el tamaño del buffer, copiar la respuesta
+            printf("Data Len: %d\n", evt->data_len);
+            //printf("Data: %s\n", (char *)evt->data);
+            strncpy(hour, (char*)evt->data, sizeof(hour));
+            printf("Data: %s\n", hour);
+            
+            char *new_hour = strrchr(hour, "datetime");
+
+            printf("Localizado: %s", new_hour);
+            
+            printf("Hora: %s", strrchr(new_hour, "T"));
+
+            // if (evt->data_len < sizeof(hour)) {
+            //     //strncpy(hour, (char*)evt->data, evt->data_len);
+            //     //public_ip[evt->data_len] = '\0';  // Asegúrate de que la cadena termine en nulo
+            // }
+            break;
+        default:
+            break;
+    }
+    return ESP_OK;
+}
+
+// Get Public Id
+void get_time() {
+    esp_http_client_config_t config = {
+        .url = "http://worldtimeapi.org/api/timezone/America/Tijuana.txt",
+        .event_handler = _http_event_handler,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    esp_http_client_perform(client);  
+    esp_http_client_cleanup(client);
+}
+
 //handler event wifi sta
 void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) 
 {
     if (event_id == WIFI_EVENT_STA_START) 
     {
         ESP_LOGI(TAG, "Connecting to the master's Wi-Fi network...");
+        //internet = true;
         esp_wifi_connect();
     } else if (event_id == WIFI_EVENT_STA_CONNECTED) 
     {
         ESP_LOGI(TAG, "Connected to the master's Wi-Fi network");
-        internet = true;
+        //internet = true;
         printf("Internet connected: %d\n", internet);
     } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) 
     {
         wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
         ESP_LOGE(TAG, "Disconnected from the master's Wi-Fi network, reason: %d", event->reason);
-        internet = false;
+        //internet = false;
         printf("Internet not connected: %d\n", internet);
         esp_wifi_connect();
 
@@ -628,6 +668,7 @@ void app_main(void)
             // Detectar el flanco ascendente (transición de 0 a 1)
             if (!button_state && last_button_state && !cooldown_message) {
                 ESP_LOGI(TAG, "Botón presionado");
+                get_time();
                 button_pressed = true;
             }
 
