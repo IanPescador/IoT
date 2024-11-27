@@ -7,42 +7,42 @@ static void delayMs(uint16_t ms)
     vTaskDelay(ms / portTICK_PERIOD_MS);
 }
 
-// Cifrar palabra
-static void cifrar(char *cif, const char *string, int size_str, const char *clave, int size_clave) {
-    uint8_t i = 0, j = 0;
-    for (i = 0; i < size_str; i++) {
-        cif[i] = string[i] ^ clave[j];
+// // Cifrar palabra
+// static void cifrar(char *cif, const char *string, int size_str, const char *clave, int size_clave) {
+//     uint8_t i = 0, j = 0;
+//     for (i = 0; i < size_str; i++) {
+//         cif[i] = string[i] ^ clave[j];
         
-        j++;
-        if (j >= size_clave)
-            j = 0;
-    }
-    cif[i] = '\0';  // Terminar la cadena con '\0'
-}
+//         j++;
+//         if (j >= size_clave)
+//             j = 0;
+//     }
+//     cif[i] = '\0';  // Terminar la cadena con '\0'
+// }
 
-// Descifrar
-static void descifrar (char *string, char *clave){
-    int8_t i = 0;
-    while (string[i] != '\r')
-    {
-        clave[i] = string[i] ^ 0x55; 
-        i++;
-    }
-    clave[i] = 0;
-}
+// // Descifrar
+// static void descifrar (char *string, char *clave){
+//     int8_t i = 0;
+//     while (string[i] != '\r')
+//     {
+//         clave[i] = string[i] ^ 0x55; 
+//         i++;
+//     }
+//     clave[i] = 0;
+// }
 
-//GET PASSWORD
-static void get_password(char *password, char *message){
-    char *token;
+// //GET PASSWORD
+// static void get_password(char *password, char *message){
+//     char *token;
 
-    //First token verify with password ACK
-    token = strtok(message, ":");
-    if (token != NULL && !strcmp(token,"ACK")){
-        token = strtok(NULL, ":"); //Take password from server
-        descifrar(token, password);
-        ESP_LOGI(TAG, "Received %s Len %d", password, strlen(password));
-    }
-}
+//     //First token verify with password ACK
+//     token = strtok(message, ":");
+//     if (token != NULL && !strcmp(token,"ACK")){
+//         token = strtok(NULL, ":"); //Take password from server
+//         descifrar(token, password);
+//         ESP_LOGI(TAG, "Received %s Len %d", password, strlen(password));
+//     }
+// }
 
 //Init led PWM
 static void ledc_init(void)
@@ -94,14 +94,14 @@ static void InitIO(void){
 
     //RESETS
     gpio_reset_pin(LED1);
-    gpio_reset_pin(BUTTON);
+    //gpio_reset_pin(BUTTON);
     
     //LEDS
     gpio_set_direction(LED1, GPIO_MODE_OUTPUT);
 
     //BUTTON
-    gpio_set_direction(BUTTON, GPIO_MODE_INPUT);
-    gpio_set_pull_mode(BUTTON, GPIO_PULLDOWN_ONLY);
+    //gpio_set_direction(BUTTON, GPIO_MODE_INPUT);
+    //gpio_set_pull_mode(BUTTON, GPIO_PULLDOWN_ONLY);
     
     //ADC
     ADC1_Ch0_Ini();
@@ -111,7 +111,10 @@ static void InitIO(void){
 }
 
 // HTTP Handler
+char *timeNew;
+char *newHour;
 esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
+    
     switch(evt->event_id) {
         case HTTP_EVENT_ON_DATA:
             // Si se reciben menos datos que el tamaño del buffer, copiar la respuesta
@@ -120,11 +123,13 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
             strncpy(hour, (char*)evt->data, sizeof(hour));
             printf("Data: %s\n", hour);
             
-            char *new_hour = strrchr(hour, "datetime");
-
-            printf("Localizado: %s", new_hour);
-            
-            printf("Hora: %s", strrchr(new_hour, "T"));
+            newHour = strstr(hour, "datetime");
+            if(newHour){
+                if(sscanf(strstr(newHour+1,"datetime"), "T%8[^.]", timeNew)){
+                    printf("Hora: %s\n", timeNew);
+                }
+            } 
+            //printf("Hora: %s", strrchr(new_hour, "T"));
 
             // if (evt->data_len < sizeof(hour)) {
             //     //strncpy(hour, (char*)evt->data, evt->data_len);
@@ -345,19 +350,19 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 }
 
 //MQTT START
-static void mqtt_app_start(void)
-{
-    esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = CONFIG_BROKER_URL,
-        .credentials.username = USERNAME,
-        .credentials.authentication.password = PASSWORD,
-    };
+// static void mqtt_app_start(void)
+// {
+//     esp_mqtt_client_config_t mqtt_cfg = {
+//         .broker.address.uri = CONFIG_BROKER_URL,
+//         .credentials.username = USERNAME,
+//         .credentials.authentication.password = PASSWORD,
+//     };
 
-    mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
-    /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
-    esp_mqtt_client_register_event(mqtt_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
-    esp_mqtt_client_start(mqtt_client);
-}
+//     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
+//     /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
+//     esp_mqtt_client_register_event(mqtt_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
+//     esp_mqtt_client_start(mqtt_client);
+// }
 
 //CREATE TCP SOCKET
 int create_tcp_socket(char* IP){
@@ -442,7 +447,7 @@ static void tcp_client(void *pvParameters)
     char message[128];
     char mqtt_message[128];
     //char cifrado[128];
-    char password[20];
+    //char password[20];
     char *token;
 
     int sock;
@@ -565,18 +570,18 @@ static void tcp_client(void *pvParameters)
                     // Enviar Mensaje
                     send_server_tcp(sock, message);
                 }
-            }else if (button_pressed)
-            {
-                ESP_LOGI(TAG, "Botón presionado, enviando mensaje al servidor");
-                //Cifrar el mensaje antes de enviarlo
-                //cifrar(cifrado, SMS, strlen(SMS), password, strlen(password));
+            //}else if (button_pressed)
+            // {
+            //     ESP_LOGI(TAG, "Botón presionado, enviando mensaje al servidor");
+            //     //Cifrar el mensaje antes de enviarlo
+            //     //cifrar(cifrado, SMS, strlen(SMS), password, strlen(password));
 
-                //Enviar mensaje cifrado al servidor
-                send_server_tcp(sock, SMS);
+            //     //Enviar mensaje cifrado al servidor
+            //     send_server_tcp(sock, SMS);
 
-                button_pressed = false;
-                cooldown_message = true;
-                _millisCooldown = 0;
+            //     button_pressed = false;
+            //     cooldown_message = true;
+            //     _millisCooldown = 0;
             }else if (_millis >= 10000) //Mandar keep alive si no hay mensaje.
             {
                 // Enviar mensaje Keep-Alive cada 10 segundos
@@ -657,30 +662,32 @@ void app_main(void)
         //CLIENT TCP
         xTaskCreate(tcp_client, "tcp_client", 4096, (void*)AF_INET, 5, NULL); 
 
+        //get_time();
+
         while (1)
         {
-            static bool button_state = true; 
-            static bool last_button_state = true; 
+            // static bool button_state = true; 
+            // static bool last_button_state = true; 
 
-            // Leer el estado actual del botón
-            button_state = gpio_get_level(BUTTON);
+            // // Leer el estado actual del botón
+            // button_state = gpio_get_level(BUTTON);
 
-            // Detectar el flanco ascendente (transición de 0 a 1)
-            if (!button_state && last_button_state && !cooldown_message) {
-                ESP_LOGI(TAG, "Botón presionado");
-                get_time();
-                button_pressed = true;
-            }
+            // // Detectar el flanco ascendente (transición de 0 a 1)
+            // if (!button_state && last_button_state && !cooldown_message) {
+            //     ESP_LOGI(TAG, "Botón presionado");
+            //     get_time();
+            //     button_pressed = true;
+            // }
 
-            // Guardar el estado actual como el último estado para la próxima detección
-            last_button_state = button_state;
+            // // Guardar el estado actual como el último estado para la próxima detección
+            // last_button_state = button_state;
 
             _millis++;
-            if (cooldown_message)
-                _millisCooldown++;
-            if (cooldown_message && _millisCooldown > 1000 * 60)
-                cooldown_message = false;
-
+            // if (cooldown_message)
+            //     _millisCooldown++;
+            // if (cooldown_message && _millisCooldown > 1000 * 60)
+            //     cooldown_message = false;
+    
             delayMs(1);
         }
     }else{
