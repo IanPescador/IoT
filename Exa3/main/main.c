@@ -12,7 +12,7 @@ static void delayMs(uint16_t ms)
 //     uint8_t i = 0, j = 0;
 //     for (i = 0; i < size_str; i++) {
 //         cif[i] = string[i] ^ clave[j];
-        
+//       
 //         j++;
 //         if (j >= size_clave)
 //             j = 0;
@@ -34,7 +34,7 @@ static void delayMs(uint16_t ms)
 // //GET PASSWORD
 // static void get_password(char *password, char *message){
 //     char *token;
-
+//
 //     //First token verify with password ACK
 //     token = strtok(message, ":");
 //     if (token != NULL && !strcmp(token,"ACK")){
@@ -100,58 +100,14 @@ static void InitIO(void){
     gpio_set_direction(LED1, GPIO_MODE_OUTPUT);
 
     //BUTTON
-    //gpio_set_direction(BUTTON, GPIO_MODE_INPUT);
-    //gpio_set_pull_mode(BUTTON, GPIO_PULLDOWN_ONLY);
+    gpio_set_direction(BUTTON, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(BUTTON, GPIO_PULLDOWN_ONLY);
     
     //ADC
     ADC1_Ch0_Ini();
 
     //LED PWM
     ledc_init();
-}
-
-// HTTP Handler
-char *timeNew;
-char *newHour;
-esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
-    
-    switch(evt->event_id) {
-        case HTTP_EVENT_ON_DATA:
-            // Si se reciben menos datos que el tamaño del buffer, copiar la respuesta
-            printf("Data Len: %d\n", evt->data_len);
-            //printf("Data: %s\n", (char *)evt->data);
-            strncpy(hour, (char*)evt->data, sizeof(hour));
-            printf("Data: %s\n", hour);
-            
-            newHour = strstr(hour, "datetime");
-            if(newHour){
-                if(sscanf(strstr(newHour+1,"datetime"), "T%8[^.]", timeNew)){
-                    printf("Hora: %s\n", timeNew);
-                }
-            } 
-            //printf("Hora: %s", strrchr(new_hour, "T"));
-
-            // if (evt->data_len < sizeof(hour)) {
-            //     //strncpy(hour, (char*)evt->data, evt->data_len);
-            //     //public_ip[evt->data_len] = '\0';  // Asegúrate de que la cadena termine en nulo
-            // }
-            break;
-        default:
-            break;
-    }
-    return ESP_OK;
-}
-
-// Get Public Id
-void get_time() {
-    esp_http_client_config_t config = {
-        .url = "http://worldtimeapi.org/api/timezone/America/Tijuana.txt",
-        .event_handler = _http_event_handler,
-    };
-
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    esp_http_client_perform(client);  
-    esp_http_client_cleanup(client);
 }
 
 //handler event wifi sta
@@ -166,13 +122,13 @@ void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id
     {
         ESP_LOGI(TAG, "Connected to the master's Wi-Fi network");
         //internet = true;
-        printf("Internet connected: %d\n", internet);
+        //printf("Internet connected: %d\n", internet);
     } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) 
     {
         wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
         ESP_LOGE(TAG, "Disconnected from the master's Wi-Fi network, reason: %d", event->reason);
         //internet = false;
-        printf("Internet not connected: %d\n", internet);
+        //printf("Internet not connected: %d\n", internet);
         esp_wifi_connect();
 
     } else if (event_id == IP_EVENT_STA_GOT_IP) 
@@ -298,56 +254,56 @@ void save_to_nvs(const char* key, const char* value) {
     nvs_close(nvs_handle);
 }
 
-static void log_error_if_nonzero(const char *message, int error_code)
-{
-    if (error_code != 0) {
-        ESP_LOGE(TAG, "Last error %s: 0x%x", message, error_code);
-    }
-}
+// static void log_error_if_nonzero(const char *message, int error_code)
+// {
+//     if (error_code != 0) {
+//         ESP_LOGE(TAG, "Last error %s: 0x%x", message, error_code);
+//     }
+// }
 
 //MQTT HANDLER EVENT
-static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
-{
-    ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32 "", base, event_id);
-    esp_mqtt_event_handle_t event = event_data;
-    esp_mqtt_client_handle_t client = event->client;
-    int msg_id;
-    switch ((esp_mqtt_event_id_t)event_id) {
-    case MQTT_EVENT_CONNECTED:
-        ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-        break;
-    case MQTT_EVENT_DISCONNECTED:
-        ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
-        break;
-    case MQTT_EVENT_SUBSCRIBED:
-        ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
-        break;
-    case MQTT_EVENT_UNSUBSCRIBED:
-        ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
-        break;
-    case MQTT_EVENT_PUBLISHED:
-        ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
-        break;
-    case MQTT_EVENT_DATA:
-        ESP_LOGI(TAG, "MQTT_EVENT_DATA");
-        printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
-        printf("DATA=%.*s\r\n", event->data_len, event->data);
-        break;
-    case MQTT_EVENT_ERROR:
-        ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
-        if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
-            log_error_if_nonzero("reported from esp-tls", event->error_handle->esp_tls_last_esp_err);
-            log_error_if_nonzero("reported from tls stack", event->error_handle->esp_tls_stack_err);
-            log_error_if_nonzero("captured as transport's socket errno",  event->error_handle->esp_transport_sock_errno);
-            ESP_LOGI(TAG, "Last errno string (%s)", strerror(event->error_handle->esp_transport_sock_errno));
-
-        }
-        break;
-    default:
-        ESP_LOGI(TAG, "Other event id:%d", event->event_id);
-        break;
-    }
-}
+// static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
+// {
+//     ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32 "", base, event_id);
+//     esp_mqtt_event_handle_t event = event_data;
+//     esp_mqtt_client_handle_t client = event->client;
+//     int msg_id;
+//     switch ((esp_mqtt_event_id_t)event_id) {
+//     case MQTT_EVENT_CONNECTED:
+//         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+//         break;
+//     case MQTT_EVENT_DISCONNECTED:
+//         ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+//         break;
+//     case MQTT_EVENT_SUBSCRIBED:
+//         ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
+//         break;
+//     case MQTT_EVENT_UNSUBSCRIBED:
+//         ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
+//         break;
+//     case MQTT_EVENT_PUBLISHED:
+//         ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
+//         break;
+//     case MQTT_EVENT_DATA:
+//         ESP_LOGI(TAG, "MQTT_EVENT_DATA");
+//         printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
+//         printf("DATA=%.*s\r\n", event->data_len, event->data);
+//         break;
+//     case MQTT_EVENT_ERROR:
+//         ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
+//         if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
+//             log_error_if_nonzero("reported from esp-tls", event->error_handle->esp_tls_last_esp_err);
+//             log_error_if_nonzero("reported from tls stack", event->error_handle->esp_tls_stack_err);
+//             log_error_if_nonzero("captured as transport's socket errno",  event->error_handle->esp_transport_sock_errno);
+//             ESP_LOGI(TAG, "Last errno string (%s)", strerror(event->error_handle->esp_transport_sock_errno));
+//
+//         }
+//         break;
+//     default:
+//         ESP_LOGI(TAG, "Other event id:%d", event->event_id);
+//         break;
+//     }
+// }
 
 //MQTT START
 // static void mqtt_app_start(void)
@@ -357,7 +313,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 //         .credentials.username = USERNAME,
 //         .credentials.authentication.password = PASSWORD,
 //     };
-
+//
 //     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
 //     /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
 //     esp_mqtt_client_register_event(mqtt_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
@@ -365,31 +321,36 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 // }
 
 //CREATE TCP SOCKET
-int create_tcp_socket(char* IP){
+int create_tcp_socket(char* IP, int Port) {
     int sock, err;
+    struct addrinfo hints, *res;
+    char port_str[6];
 
-    int addr_family = AF_INET;
-    int ip_protocol = IPPROTO_IP;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;        // IPv4
+    hints.ai_socktype = SOCK_STREAM; // TCP
 
-    // Configuración de la dirección del servidor
-    struct sockaddr_in dest_addr;
-    dest_addr.sin_addr.s_addr = inet_addr(IP);
-    dest_addr.sin_family = AF_INET;
-    dest_addr.sin_port = htons(PORT);
-    ip_protocol = IPPROTO_IP;
+    snprintf(port_str, sizeof(port_str), "%d", Port); // Convertir puerto a cadena
 
-    // Intentar la conexión hasta que sea exitosa
+    // Resolver nombre de dominio a dirección IP
+    err = getaddrinfo(IP, port_str, &hints, &res);
+    if (err != 0) {
+        ESP_LOGE(TAG, "getaddrinfo failed");
+        return -1;
+    }
+
     while (1) {
         // Crear el socket
-        sock = socket(addr_family, SOCK_STREAM, ip_protocol);
+        sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
         if (sock < 0) {
             ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
             vTaskDelay(pdMS_TO_TICKS(1000)); // Retraso antes de reintentar
             continue; // Reintentar creación de socket
         }
-        ESP_LOGI(TAG, "Socket created, connecting to %s:%d", IP, PORT);
+        ESP_LOGI(TAG, "Socket created, connecting to %s:%d", IP, Port);
 
-        err = connect(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+        // Intentar conectar
+        err = connect(sock, res->ai_addr, res->ai_addrlen);
         if (err == 0) {
             ESP_LOGI(TAG, "Successfully connected");
             break; // Conexión exitosa, salir del bucle de reintento
@@ -404,6 +365,8 @@ int create_tcp_socket(char* IP){
     timeout.tv_sec = 2;  // Tiempo en segundos
     timeout.tv_usec = 0; // Tiempo en microsegundos
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+    freeaddrinfo(res); // Liberar la memoria asignada por getaddrinfo
 
     return sock; // Regresar el socket creado y configurado
 }
@@ -445,21 +408,21 @@ static void tcp_client(void *pvParameters)
 {
     char rx_buffer[128];
     char message[128];
-    char mqtt_message[128];
+    //char mqtt_message[128];
     //char cifrado[128];
     //char password[20];
     char *token;
 
     int sock;
     int len;
-    int msg_id;
+    //int msg_id;
 
     while (1)
     {
         if(internet){
-            sock = create_tcp_socket(HOST_IP_ADDR);
+            sock = create_tcp_socket(HOST_IP_ADDR, PORT);
         }else{
-            sock = create_tcp_socket(ALTERNATIVE_IP);
+            sock = create_tcp_socket(ALTERNATIVE_IP, PORT);
         }
         
         // Enviar mensaje de login
@@ -517,9 +480,9 @@ static void tcp_client(void *pvParameters)
                                                 gpio_set_level(LED1, led_state);
                                                 snprintf(message, sizeof(message), "ACK:%d", led_state);
                                             }
-                                            snprintf(mqtt_message, sizeof(mqtt_message), "%d:IPR", led_state);
-                                            msg_id = esp_mqtt_client_publish(mqtt_client, "device/led", mqtt_message, 0, 1, 0);
-                                            ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+                                            //snprintf(mqtt_message, sizeof(mqtt_message), "%d:IPR", led_state);
+                                            //msg_id = esp_mqtt_client_publish(mqtt_client, "device/led", mqtt_message, 0, 1, 0);
+                                            //ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
                                         }   
                                     }else if (token != NULL && !strcmp(token, "P"))
                                     {
@@ -551,9 +514,9 @@ static void tcp_client(void *pvParameters)
                                         if (!strcmp(token, "L")){ //Element is LED
                                             snprintf(message, sizeof(message), "ACK:%d", led_state);
 
-                                            snprintf(mqtt_message, sizeof(mqtt_message), "%d:IPR", led_state);
-                                            msg_id = esp_mqtt_client_publish(mqtt_client, "device/led", mqtt_message, 0, 1, 0);
-                                            ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+                                            //snprintf(mqtt_message, sizeof(mqtt_message), "%d:IPR", led_state);
+                                            //msg_id = esp_mqtt_client_publish(mqtt_client, "device/led", mqtt_message, 0, 1, 0);
+                                            //ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
                                         }else if (!strcmp(token, "A")){ //Element is ADC
                                             snprintf(message, sizeof(message), "ACK:%d", ADC1_Ch0_Read_mV());
                                         }else if (!strcmp(token, "P")){ //Element is PWM
@@ -570,18 +533,18 @@ static void tcp_client(void *pvParameters)
                     // Enviar Mensaje
                     send_server_tcp(sock, message);
                 }
-            //}else if (button_pressed)
-            // {
-            //     ESP_LOGI(TAG, "Botón presionado, enviando mensaje al servidor");
-            //     //Cifrar el mensaje antes de enviarlo
-            //     //cifrar(cifrado, SMS, strlen(SMS), password, strlen(password));
+            }else if (button_pressed)
+            {
+                ESP_LOGI(TAG, "Botón presionado, enviando mensaje al servidor");
+                //Cifrar el mensaje antes de enviarlo
+                //cifrar(cifrado, SMS, strlen(SMS), password, strlen(password));
 
-            //     //Enviar mensaje cifrado al servidor
-            //     send_server_tcp(sock, SMS);
+                //Enviar mensaje cifrado al servidor
+                send_server_tcp(sock, SMS);
 
-            //     button_pressed = false;
-            //     cooldown_message = true;
-            //     _millisCooldown = 0;
+                button_pressed = false;
+                cooldown_message = true;
+                _millisCooldown = 0;
             }else if (_millis >= 10000) //Mandar keep alive si no hay mensaje.
             {
                 // Enviar mensaje Keep-Alive cada 10 segundos
@@ -591,8 +554,98 @@ static void tcp_client(void *pvParameters)
                 _millis=0;
             }
         }
+        delayMs(100);
     }
     // Eliminar la tarea antes de retornar
+    vTaskDelete(NULL);
+}
+
+//CLOCK TASK
+static void clockTask(void *pvParameters)
+{
+    uint8_t sec = 0, min = 0, hour = 0, api_sec = 0, api_min = 0, api_hour = 0, lastHour = 0;
+    bool checkApi = true;
+    int sock_api, len;
+    char api_response[1024], timeNew[9], *newHour;
+
+    // Formatear GET request
+    const char *get_request = 
+    "GET /api/timezone/America/Tijuana.txt HTTP/1.1\r\n"
+    "Host: worldtimeapi.org\r\n"
+    "Connection: close\r\n"
+    "\r\n";
+
+    while (1) {
+        if (checkApi)
+        {
+            checkApi = false;
+            sock_api = create_tcp_socket("worldtimeapi.org", 80);
+            if (sock_api < 0) {
+                ESP_LOGE(TAG, "Error creando socket");
+                internet = false;
+                continue;
+            }
+
+            send_server_tcp(sock_api, (char *)get_request);
+            len = receive_server_tcp(sock_api, api_response, sizeof(api_response));
+            close(sock_api);
+
+            if(len > 0){
+                internet = 1;
+                // Si se reciben menos datos que el tamaño del buffer, copiar la respuesta
+                newHour = strstr(api_response, "datetime");
+                if(newHour){
+                    newHour = strstr(newHour+1,"datetime");
+                    if (newHour) {
+                        newHour = strstr(newHour, "T");
+                        if (newHour) {
+                            // Copiar los primeros 8 caracteres después de la "T" (formato hora)
+                            sscanf(newHour + 1, "%8s", timeNew); 
+                            sscanf(timeNew, "%2hhd:%2hhd:%2hhd", &api_hour, &api_min, &api_sec);
+                            ESP_LOGI(TAG, "Hora API: %02d:%02d:%02d\n", api_hour, api_min, api_sec);
+
+                            if(hour != api_hour || min != api_min){
+                                ESP_LOGE(TAG, "CORRECCION DE HORA");
+                                hour = api_hour;
+                                min = api_min;
+                                sec = api_sec;
+                            }
+                            lastHour = hour;
+                        }
+                    }
+                } 
+            }else{
+                ESP_LOGE(TAG, "No response API no internet");
+                internet = false;
+                continue;
+            }
+        }
+        
+        // Incrementar segundos
+        sec++;
+        if (sec == 60) {
+            sec = 0;
+            min++;
+            if (min == 60) {
+                min = 0;
+                hour++;
+                if (hour == 24) {
+                    hour = 0;
+                }
+            }
+        }
+
+        if ((hour - lastHour + 24) % 24 >= 1){
+            checkApi = true;
+        }
+
+        // Mostrar el tiempo en consola
+        ESP_LOGE(TAG, "Hora actual: %02d:%02d:%02d", hour, min, sec);
+
+        // Pausar la tarea por 1 segundo
+        delayMs(1000);
+    }
+
     vTaskDelete(NULL);
 }
 
@@ -657,36 +710,36 @@ void app_main(void)
         delayMs(5000);
 
         //Init MQTT
-        mqtt_app_start();
+        //mqtt_app_start();
+
+        //CLOCK
+        xTaskCreate(clockTask, "clockTask", 8192, NULL, 4, NULL); 
 
         //CLIENT TCP
         xTaskCreate(tcp_client, "tcp_client", 4096, (void*)AF_INET, 5, NULL); 
 
-        //get_time();
-
         while (1)
         {
-            // static bool button_state = true; 
-            // static bool last_button_state = true; 
+            static bool button_state = true; 
+            static bool last_button_state = true; 
 
-            // // Leer el estado actual del botón
-            // button_state = gpio_get_level(BUTTON);
+            // Leer el estado actual del botón
+            button_state = gpio_get_level(BUTTON);
 
-            // // Detectar el flanco ascendente (transición de 0 a 1)
-            // if (!button_state && last_button_state && !cooldown_message) {
-            //     ESP_LOGI(TAG, "Botón presionado");
-            //     get_time();
-            //     button_pressed = true;
-            // }
+            // Detectar el flanco ascendente (transición de 0 a 1)
+            if (!button_state && last_button_state && !cooldown_message) {
+                ESP_LOGI(TAG, "Botón presionado");
+                button_pressed = true;
+            }
 
-            // // Guardar el estado actual como el último estado para la próxima detección
-            // last_button_state = button_state;
+            // Guardar el estado actual como el último estado para la próxima detección
+            last_button_state = button_state;
 
             _millis++;
-            // if (cooldown_message)
-            //     _millisCooldown++;
-            // if (cooldown_message && _millisCooldown > 1000 * 60)
-            //     cooldown_message = false;
+            if (cooldown_message)
+                _millisCooldown++;
+            if (cooldown_message && _millisCooldown > 1000 * 60)
+                cooldown_message = false;
     
             delayMs(1);
         }
@@ -697,7 +750,7 @@ void app_main(void)
         wifi_init_softap();
 
         // Start the web server
-        httpd_handle_t server = start_web_server();
+        start_web_server();
 
         while(1){
             if (strlen(device_config.device_name) > 0 && strlen(device_config.username) > 0 && strlen(device_config.wifi_name) > 0 && strlen(device_config.wifi_password) > 0)

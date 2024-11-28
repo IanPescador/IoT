@@ -28,18 +28,17 @@
 #include "driver/ledc.h"
 #include <lwip/netdb.h>
 #include "mqtt_client.h"
-#include "esp_http_client.h"
+#include <netdb.h>
 
 bool config_complete = false;
-//bool button_pressed = false;
-//bool cooldown_message = false;
+bool button_pressed = false;
+bool cooldown_message = false;
 bool internet = true;
 
 char *TAG = "TCP_CLIENT";
 char KEEP_ALIVE[32]; //Enviar cada 10 seg
 char CONNECT[32]; //Enviar al conectar
-char SMS[64]; //Enviar Mensaje SMS
-char *hour; 
+char SMS[64]; //Enviar Mensaje SMS 
 
 #define CONFIG_BROKER_URL "mqtt://iot-uabc.site:1883"
 #define USERNAME "mqtt"
