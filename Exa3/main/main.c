@@ -563,7 +563,7 @@ static void tcp_client(void *pvParameters)
 //CLOCK TASK
 static void clockTask(void *pvParameters)
 {
-    uint8_t sec = 0, min = 0, hour = 0, api_sec = 0, api_min = 0, api_hour = 0, lastHour = 0;
+    uint8_t millis = 0, sec = 0, min = 0, hour = 0, api_millis = 0, api_redondeo = 0, api_sec = 0, api_min = 0, api_hour = 0, lastHour = 0, lastMin = 0, lastSec = 0;
     bool checkApi = true;
     int sock_api, len;
     char api_response[1024], timeNew[9], *newHour;
@@ -601,16 +601,22 @@ static void clockTask(void *pvParameters)
                         if (newHour) {
                             // Copiar los primeros 8 caracteres después de la "T" (formato hora)
                             sscanf(newHour + 1, "%8s", timeNew); 
-                            sscanf(timeNew, "%2hhd:%2hhd:%2hhd", &api_hour, &api_min, &api_sec);
-                            ESP_LOGI(TAG, "Hora API: %02d:%02d:%02d\n", api_hour, api_min, api_sec);
+                            sscanf(timeNew, "%2hhd:%2hhd:%2hhd.%2hhd%1hhd", &api_hour, &api_min, &api_sec, &api_millis, &api_redondeo);
+                            if (api_redondeo > 5){
+                                api_millis++;
+                            }
+                            ESP_LOGI(TAG, "Hora API: %02d:%02d:%02d.%d\n", api_hour, api_min, api_sec, api_millis);
 
                             if(hour != api_hour || min != api_min){
                                 ESP_LOGE(TAG, "CORRECCION DE HORA");
                                 hour = api_hour;
                                 min = api_min;
                                 sec = api_sec;
+                                millis = api_millis;
                             }
                             lastHour = hour;
+                            lastMin = min;
+                            lastSec = sec;
                         }
                     }
                 } 
@@ -622,28 +628,31 @@ static void clockTask(void *pvParameters)
         }
         
         // Incrementar segundos
-        sec++;
-        if (sec == 60) {
-            sec = 0;
-            min++;
-            if (min == 60) {
-                min = 0;
-                hour++;
-                if (hour == 24) {
-                    hour = 0;
+        millis++;
+        if (millis >= 100){
+            millis = 0;
+            sec++;
+            // Mostrar el tiempo en consola
+            ESP_LOGE(TAG, "Hora actual: %02d:%02d:%02d.%d", hour, min, sec, millis);
+            if (sec == 60) {
+                sec = 0;
+                min++;
+                if (min == 60) {
+                    min = 0;
+                    hour++;
+                    if (hour == 24) {
+                        hour = 0;
+                    }
                 }
             }
         }
 
-        if ((hour - lastHour + 24) % 24 >= 1){
+        if ((hour - lastHour + 24) % 24 >= 1 && min == lastMin && sec == lastSec){
             checkApi = true;
         }
 
-        // Mostrar el tiempo en consola
-        ESP_LOGE(TAG, "Hora actual: %02d:%02d:%02d", hour, min, sec);
-
-        // Pausar la tarea por 1 segundo
-        delayMs(1000);
+        // Pausar la tarea por 100 millis
+        delayMs(10);
     }
 
     vTaskDelete(NULL);
