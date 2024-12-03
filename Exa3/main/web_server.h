@@ -5,7 +5,6 @@
 #include <esp_http_server.h>
 #include <esp_log.h>
 #include <string.h>
-#include "cJSON.h"
 
 // Estructura para almacenar la configuración del dispositivo
 typedef struct {

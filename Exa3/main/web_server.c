@@ -5,7 +5,7 @@ static const char *TAG = "WEB_SERVER";
 // Instancia global de la configuración del dispositivo
 device_config_t device_config;
 
-// Contenido de la página HTML con JavaScript para enviar JSON
+// Contenido de la página HTML para enviar datos sin JSON
 const char *index_html = "<!DOCTYPE HTML>"
                          "<html>"
                          "<head>"
@@ -24,34 +24,29 @@ const char *index_html = "<!DOCTYPE HTML>"
                          "<body>"
                          "<div class=\"container\">"
                          "<h1>Device Configuration</h1>"
-                         "<form id=\"configForm\">"
+                         "<form action=\"/config\" method=\"POST\">"
                          "  WiFi Name: <input type=\"text\" name=\"wifiName\" id=\"wifiName\"><br>"
                          "  WiFi Password: <input type=\"password\" name=\"wifiPassword\" id=\"wifiPassword\"><br>"
                          "  Device Name: <input type=\"text\" name=\"deviceName\" id=\"deviceName\"><br>"
                          "  Username: <input type=\"text\" name=\"username\" id=\"username\"><br>"
-                         "  <button type=\"button\" onclick=\"submitForm()\">Save Configuration</button>"
+                         "  <button type=\"submit\">Save Configuration</button>"
                          "</form>"
                          "</div>"
-                         "<script>"
-                         "function submitForm() {"
-                         "    const data = {"
-                         "        wifiName: document.getElementById('wifiName').value,"
-                         "        wifiPassword: document.getElementById('wifiPassword').value,"
-                         "        deviceName: document.getElementById('deviceName').value,"
-                         "        username: document.getElementById('username').value"
-                         "    };"
-                         "    fetch('/config', {"
-                         "        method: 'POST',"
-                         "        headers: { 'Content-Type': 'application/json' },"
-                         "        body: JSON.stringify(data)"
-                         "    })"
-                         "    .then(response => response.text())"
-                         "    .then(data => alert(data))"
-                         "    .catch(error => console.error('Error:', error));"
-                         "}"
-                         "</script>"
                          "</body>"
                          "</html>";
+
+// Función para analizar datos URL-encoded
+static void parse_data(const char *content) {
+    char *wifi_name = strstr(content, "wifiName=");
+    char *wifi_password = strstr(content, "wifiPassword=");
+    char *device_name = strstr(content, "deviceName=");
+    char *username = strstr(content, "username=");
+
+    if (wifi_name) sscanf(wifi_name, "wifiName=%31[^&]", device_config.wifi_name);
+    if (wifi_password) sscanf(wifi_password, "wifiPassword=%63[^&]", device_config.wifi_password);
+    if (device_name) sscanf(device_name, "deviceName=%31[^&]", device_config.device_name);
+    if (username) sscanf(username, "username=%31[^&]", device_config.username);
+}
 
 // Handler para servir la página de configuración
 esp_err_t index_handler(httpd_req_t *req) {
@@ -61,7 +56,7 @@ esp_err_t index_handler(httpd_req_t *req) {
 
 // Manejador para el endpoint POST /config
 esp_err_t config_post_handler(httpd_req_t *req) {
-    char content[512];  // Aumento del tamaño del buffer para recibir contenido
+    char content[512];
     int ret = httpd_req_recv(req, content, sizeof(content) - 1);
     if (ret <= 0) {
         if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
@@ -70,43 +65,19 @@ esp_err_t config_post_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
     content[ret] = '\0';
-    
+
     ESP_LOGI(TAG, "Contenido recibido: %s", content);
 
-    // Parsear JSON
-    cJSON *json = cJSON_Parse(content);
-    if (json == NULL) {
-        ESP_LOGE(TAG, "Error al analizar JSON");
-        httpd_resp_send_500(req);
-        return ESP_FAIL;
-    }
+    // Procesar datos URL-encoded
+    parse_data(content);
 
-    // Obtener y guardar los campos en device_config
-    cJSON *wifi_name = cJSON_GetObjectItem(json, "wifiName");
-    cJSON *wifi_password = cJSON_GetObjectItem(json, "wifiPassword");
-    cJSON *device_name = cJSON_GetObjectItem(json, "deviceName");
-    cJSON *username = cJSON_GetObjectItem(json, "username");
-
-    if (cJSON_IsString(wifi_name) && (wifi_name->valuestring != NULL)) {
-        strncpy(device_config.wifi_name, wifi_name->valuestring, sizeof(device_config.wifi_name) - 1);
-    }
-    if (cJSON_IsString(wifi_password) && (wifi_password->valuestring != NULL)) {
-        strncpy(device_config.wifi_password, wifi_password->valuestring, sizeof(device_config.wifi_password) - 1);
-    }
-    if (cJSON_IsString(device_name) && (device_name->valuestring != NULL)) {
-        strncpy(device_config.device_name, device_name->valuestring, sizeof(device_config.device_name) - 1);
-    }
-    if (cJSON_IsString(username) && (username->valuestring != NULL)) {
-        strncpy(device_config.username, username->valuestring, sizeof(device_config.username) - 1);
-    }
-
-    cJSON_Delete(json);
-    httpd_resp_send(req, "Configuración recibida", HTTPD_RESP_USE_STRLEN);
-    ESP_LOGI(TAG, "Configuración actualizada: WiFi: %s, Password: %s, Device Name: %s, Username: %s", 
+    ESP_LOGI(TAG, "Configuración actualizada: WiFi: %s, Password: %s, Device Name: %s, Username: %s",
              device_config.wifi_name, device_config.wifi_password, device_config.device_name, device_config.username);
 
+    httpd_resp_send(req, "Configuración recibida", HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
+
 
 // Configuración del servidor y registro de handlers
 httpd_handle_t start_web_server(void) {
