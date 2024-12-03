@@ -116,19 +116,14 @@ void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id
     if (event_id == WIFI_EVENT_STA_START) 
     {
         ESP_LOGI(TAG, "Connecting to the master's Wi-Fi network...");
-        //internet = true;
         esp_wifi_connect();
     } else if (event_id == WIFI_EVENT_STA_CONNECTED) 
     {
         ESP_LOGI(TAG, "Connected to the master's Wi-Fi network");
-        //internet = true;
-        //printf("Internet connected: %d\n", internet);
     } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) 
     {
         wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
         ESP_LOGE(TAG, "Disconnected from the master's Wi-Fi network, reason: %d", event->reason);
-        //internet = false;
-        //printf("Internet not connected: %d\n", internet);
         esp_wifi_connect();
 
     } else if (event_id == IP_EVENT_STA_GOT_IP) 
@@ -542,8 +537,14 @@ static void tcp_client(void *pvParameters)
                 //Enviar mensaje cifrado al servidor
                 send_server_tcp(sock, SMS);
 
+                if (xSemaphoreTake(xMutex, portMAX_DELAY))
+                {
                 button_pressed = false;
                 cooldown_message = true;
+                xSemaphoreGive(xMutex);
+                }
+
+                
                 _millisCooldown = 0;
             }else if (_millis >= 10000) //Mandar keep alive si no hay mensaje.
             {
@@ -591,7 +592,7 @@ static void clockTask(void *pvParameters)
             close(sock_api);
 
             if(len > 0){
-                internet = 1;
+                internet = true;
                 // Si se reciben menos datos que el tamaño del buffer, copiar la respuesta
                 newHour = strstr(api_response, "datetime");
                 if(newHour){
@@ -661,6 +662,7 @@ static void clockTask(void *pvParameters)
 //Main proccess
 void app_main(void)
 {
+    bool config_complete = false;
     esp_err_t ret;
 
     ESP_ERROR_CHECK(nvs_flash_init());
@@ -721,8 +723,13 @@ void app_main(void)
         //Init MQTT
         //mqtt_app_start();
 
+        xMutex = xSemaphoreCreateMutex();
+
         //CLOCK
         xTaskCreate(clockTask, "clockTask", 8192, NULL, 4, NULL); 
+
+        //WAIT CLOCK RESPONSE
+        delayMs(2000);
 
         //CLIENT TCP
         xTaskCreate(tcp_client, "tcp_client", 4096, (void*)AF_INET, 5, NULL); 
@@ -738,7 +745,11 @@ void app_main(void)
             // Detectar el flanco ascendente (transición de 0 a 1)
             if (!button_state && last_button_state && !cooldown_message) {
                 ESP_LOGI(TAG, "Botón presionado");
+                if (xSemaphoreTake(xMutex, portMAX_DELAY))
+                {
                 button_pressed = true;
+                xSemaphoreGive(xMutex);
+                }
             }
 
             // Guardar el estado actual como el último estado para la próxima detección
@@ -747,8 +758,13 @@ void app_main(void)
             _millis++;
             if (cooldown_message)
                 _millisCooldown++;
-            if (cooldown_message && _millisCooldown > 1000 * 60)
+            if (cooldown_message && _millisCooldown > 1000 * 60){
+                if (xSemaphoreTake(xMutex, portMAX_DELAY))
+                {
                 cooldown_message = false;
+                xSemaphoreGive(xMutex);
+                }
+            } 
     
             delayMs(1);
         }

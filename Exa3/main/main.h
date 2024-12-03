@@ -29,8 +29,10 @@
 #include <lwip/netdb.h>
 #include "mqtt_client.h"
 #include <netdb.h>
+#include "freertos/semphr.h"
 
-bool config_complete = false;
+SemaphoreHandle_t xMutex;
+
 bool button_pressed = false;
 bool cooldown_message = false;
 bool internet = true;
